@@ -7,7 +7,7 @@ Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) inside a light
 - **Sandboxed execution** — Claude Code runs in an isolated container, not directly on your host
 - **Zero build time** — mounts the host's Claude binary directly, no Docker image to build or maintain
 - **Always up to date** — uses whatever version is installed on your host
-- **Full tooling** — git, docker, ssh, jq, make, and your custom tools are all available
+- **Full tooling** — all host binaries in `/usr/bin` are available via `/host/bin`
 - **Seamless auth** — shares your existing OAuth session, SSH keys, git config, and AWS credentials
 
 ## Requirements
@@ -21,7 +21,10 @@ Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) inside a light
 ### 1. Install
 
 ```bash
-source <(curl -s https://raw.githubusercontent.com/YOUR_ORG/claude-sandbox/main/install.sh)
+git clone git@github.com:aeanez/claude-sandbox.git
+cd claude-sandbox
+bash install.sh
+source ~/.bashrc
 ```
 
 Or manually — copy the function and aliases from [`claude-sandbox.sh`](claude-sandbox.sh) into your `~/.bashrc`:
@@ -31,29 +34,13 @@ cat claude-sandbox.sh >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 2. First-time setup
-
-Claude Code stores onboarding state in `~/.claude/.claude.json`. If the container prompts you for first-time setup, ensure these fields exist:
+### 2. Use
 
 ```bash
-python3 -c "
-import json
-with open('$HOME/.claude/.claude.json', 'r') as f:
-    data = json.load(f)
-data['hasCompletedOnboarding'] = True
-data['theme'] = 'dark'  # or 'light'
-with open('$HOME/.claude/.claude.json', 'w') as f:
-    json.dump(data, f, indent=2)
-"
-```
-
-### 3. Use
-
-```bash
-# Drop into a bash shell inside the sandbox
+# Run Claude Code inside the sandbox
 sandbox
 
-# Run Claude Code with --dangerously-skip-permissions (works inside or outside container)
+# Run Claude Code with --dangerously-skip-permissions inside the sandbox
 yolo
 ```
 
@@ -61,37 +48,38 @@ yolo
 
 | Command | Description |
 |---------|-------------|
-| `sandbox` | Opens an interactive bash shell in the container at `$HOME` |
-| `yolo` | Runs `claude -c --dangerously-skip-permissions` (works anywhere) |
+| `sandbox` | Runs `claude -c` inside the container at your current directory |
+| `yolo` | Runs `claude -c --dangerously-skip-permissions` inside the container (hostname: `yolo`) |
 
-Inside the sandbox you have full access to `claude`, `git`, `docker`, `ssh`, `jq`, `make`, and anything in `~/.local/bin`.
+Inside the sandbox you have full access to `claude`, `git`, `docker`, `ssh`, `jq`, `make`, and all other host binaries via `/host/bin`.
 
 ## How It Works
 
 ```
 Host (WSL2 / Linux)
  |
- ├── ~/.local/bin/claude  ──► mounted read-only into container
- ├── ~/.claude/            ──► mounted (config, auth, sessions)
- ├── ~/.claude.json        ──► mounted (onboarding state)
  ├── $HOME                 ──► mounted (full home directory)
+ ├── /usr/bin              ──► mounted read-only to /host/bin
+ ├── /usr/lib/git-core     ──► mounted read-only to /host/lib/git-core
  ├── /lib/x86_64-linux-gnu ──► mounted read-only (shared libraries)
+ ├── /usr/bin/docker       ──► mounted read-only (resolved via readlink)
  ├── /var/run/docker.sock  ──► mounted (Docker-in-Docker access)
  └── /etc/passwd, /etc/group ► mounted read-only (uid resolution)
          │
          ▼
-   ┌─────────────────────────┐
-   │  ubuntu:22.04 container │
-   │  (~70MB base image)     │
-   │                         │
-   │  - Host binary, no npm  │
-   │  - Same uid/gid as host │
-   │  - Host network mode    │
-   │  - Hostname: "sandbox"  │
-   └─────────────────────────┘
+   ┌─────────────────────────────┐
+   │  ubuntu:22.04 container     │
+   │  (~70MB base image)         │
+   │                             │
+   │  - Host binaries in PATH    │
+   │  - Same uid/gid as host     │
+   │  - Host network mode        │
+   │  - Working dir = host $PWD  │
+   │  - Hostname: sandbox / yolo │
+   └─────────────────────────────┘
 ```
 
-The container runs as your host user (same uid/gid), uses host networking, and mounts your entire home directory. The PS1 prompt shows `sandbox:` so you always know when you're inside the container.
+The container runs as your host user (same uid/gid), uses host networking, and mounts your entire home directory. The working directory matches wherever you launched the command from.
 
 ## Configuration
 
@@ -99,19 +87,9 @@ The container runs as your host user (same uid/gid), uses host networking, and m
 
 The default is `ubuntu:22.04` to match a typical WSL2 host. Change it in `claude-sandbox.sh` if your host runs a different distro.
 
-### Host tools
-
-Tools are mounted from the host via bind mounts. To add more:
-
-```bash
--v /usr/bin/mytool:/usr/bin/mytool:ro \
-```
-
-If the tool is dynamically linked, the host's `/lib/x86_64-linux-gnu` is already mounted, so most Debian/Ubuntu binaries will work out of the box.
-
 ### Hostname
 
-Change `--hostname sandbox` to whatever you prefer. Your PS1 should use `\h` to display it:
+The hostname defaults to `sandbox` and can be overridden via the `SANDBOX_HOSTNAME` environment variable. The `yolo` alias sets it to `yolo` automatically. Your PS1 should use `\h` to display it:
 
 ```bash
 PS1="\h:\w\$ "
@@ -123,13 +101,13 @@ PS1="\h:\w\$ "
 SSH needs to resolve your user. The setup mounts `/etc/passwd` and `/etc/group` read-only to fix this.
 
 ### Claude asks for first-time setup
-Add `hasCompletedOnboarding: true` and `theme: "dark"` to `~/.claude/.claude.json`. See [First-time setup](#2-first-time-setup).
+The installer handles this automatically. If it still happens, add `hasCompletedOnboarding: true` and `theme: "dark"` to `~/.claude/.claude.json`.
 
 ### Docker permission denied
 The setup adds your user to the Docker socket's group via `--group-add`. If it still fails, check the socket permissions: `stat -c '%g' /var/run/docker.sock`.
 
 ### Tool not found
-If a host binary isn't available, add a `-v` mount for it. Statically linked binaries (Go, Rust) just work. Dynamically linked binaries work because `/lib/x86_64-linux-gnu` is mounted.
+All host binaries from `/usr/bin` are mounted at `/host/bin` and added to `PATH`. If a binary lives elsewhere, add a `-v` mount for it in `claude-sandbox.sh`. Dynamically linked binaries work because `/lib/x86_64-linux-gnu` is mounted.
 
 ## License
 
