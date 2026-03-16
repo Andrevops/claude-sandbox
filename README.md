@@ -53,6 +53,23 @@ yolo
 
 Inside the sandbox you have full access to `claude`, `git`, `docker`, `ssh`, `jq`, `make`, and all other host binaries via `/host/bin`.
 
+## How is this different from Claude Code's `/sandbox`?
+
+Claude Code has a built-in `/sandbox` command that uses OS-level isolation (bubblewrap on Linux, Seatbelt on macOS) to restrict what individual tool calls can access. It's a security feature that limits filesystem writes and filters network requests.
+
+This repo is different — it wraps the **entire Claude process** inside a Docker container:
+
+| | Claude Code `/sandbox` | claude-sandbox (this repo) |
+|---|---|---|
+| **Scope** | Restricts individual Bash commands | Isolates the entire Claude session |
+| **Technology** | OS-level (bubblewrap / Seatbelt) | Docker container |
+| **Filesystem** | Write-restricted to CWD + allowlist | Container boundary — only sees mounted paths |
+| **Network** | Proxy-based domain allowlist | Host network (no filtering) |
+| **Tools** | Some break (docker, watchman) | All host binaries available via `/host/bin` |
+| **Use case** | Hardened security for autonomous agents | Dev workflow with full autonomy (`yolo`) |
+
+The main value here is the `yolo` workflow: run `--dangerously-skip-permissions` inside a disposable container where the blast radius is limited by Docker. You can also enable `/sandbox` *inside* the container for defense-in-depth.
+
 ## How It Works
 
 ```
