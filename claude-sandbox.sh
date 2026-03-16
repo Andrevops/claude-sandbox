@@ -9,13 +9,11 @@ _claude_docker() {
     --hostname "${SANDBOX_HOSTNAME:-sandbox}" \
     --network host \
     -e HOME="$HOME" \
-    -e PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME/.local/bin" \
+    -e PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/host/bin:/host/lib/git-core:$HOME/.local/bin" \
     -v "$HOME:$HOME" \
     -v /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro \
-    -v /usr/bin/git:/usr/bin/git:ro \
-    -v /usr/lib/git-core:/usr/lib/git-core:ro \
-    -v /usr/bin/jq:/usr/bin/jq:ro \
-    -v /usr/bin/make:/usr/bin/make:ro \
+    -v /usr/bin:/host/bin:ro \
+    -v /usr/lib/git-core:/host/lib/git-core:ro \
     -v "$(readlink -f /usr/bin/docker):/usr/bin/docker:ro" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc/passwd:/etc/passwd:ro \
@@ -25,8 +23,8 @@ _claude_docker() {
     "$@"
 }
 
-# Drop into an interactive bash shell inside the sandbox
-alias sandbox='_claude_docker bash -l'
+# Run Claude Code inside the sandbox
+alias sandbox='_claude_docker claude -c'
 
 # Run Claude Code with --dangerously-skip-permissions inside the sandbox
 alias yolo='SANDBOX_HOSTNAME=yolo _claude_docker claude -c --dangerously-skip-permissions'
