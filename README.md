@@ -112,6 +112,20 @@ The hostname defaults to `sandbox` and can be overridden via the `SANDBOX_HOSTNA
 PS1="\h:\w\$ "
 ```
 
+## Security Considerations
+
+This sandbox limits blast radius via Docker, but it is **not a security boundary** against a determined attacker. Two things to be aware of:
+
+- **Docker socket is mounted** — the container has full access to the Docker daemon, which is effectively root-equivalent on the host. This is required for the `docker` CLI to work inside the sandbox. If you don't need Docker access, remove the `-v /var/run/docker.sock` line.
+
+- **`$HOME` is mounted read-write** but sensitive directories (`.ssh`, `.aws`, `.gnupg`) are overlaid as read-only by default. To protect additional paths, add more read-only overlays in `claude-sandbox.sh`:
+
+```bash
+-v "$HOME/.kube:$HOME/.kube:ro" \
+```
+
+For defense-in-depth, enable Claude Code's built-in `/sandbox` inside the container as well.
+
 ## Troubleshooting
 
 ### "No user exists for uid 1000"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Claude Sandbox installer
-# Usage: source <(curl -s URL/install.sh)
-#    or: bash install.sh
+# Usage: git clone git@github.com:aeanez/claude-sandbox.git
+#        cd claude-sandbox && bash install.sh
 
 set -euo pipefail
 
@@ -30,18 +30,20 @@ check_prereqs() {
 setup_onboarding() {
   local claude_json="$HOME/.claude/.claude.json"
   if [[ -f "$claude_json" ]]; then
-    if ! python3 -c "
+    if ! python3 - "$claude_json" <<'PYEOF' 2>/dev/null
 import json, sys
-with open('$claude_json') as f:
+claude_json = sys.argv[1]
+with open(claude_json) as f:
     d = json.load(f)
 if d.get('hasCompletedOnboarding') and d.get('theme'):
     sys.exit(0)
 d['hasCompletedOnboarding'] = True
 d.setdefault('theme', 'dark')
-with open('$claude_json', 'w') as f:
+with open(claude_json, 'w') as f:
     json.dump(d, f, indent=2)
-print('Set onboarding flags in $claude_json')
-" 2>/dev/null; then
+print(f'Set onboarding flags in {claude_json}')
+PYEOF
+    then
       echo "Warning: Could not update $claude_json — you may see the onboarding wizard in the container"
     fi
   fi
@@ -59,7 +61,7 @@ update_ps1() {
 install() {
   # Remove previous installation
   if grep -q "$MARKER" "$BASHRC" 2>/dev/null; then
-    sed -i "/$MARKER/,/$MARKER_END/d" "$BASHRC"
+    sed -i "\|$MARKER|,\|$MARKER_END|d" "$BASHRC"
     echo "Removed previous claude-sandbox from .bashrc"
   fi
 

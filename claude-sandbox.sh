@@ -11,6 +11,9 @@ _claude_docker() {
     -e HOME="$HOME" \
     -e PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/host/bin:/host/lib/git-core:$HOME/.local/bin" \
     -v "$HOME:$HOME" \
+    -v "$HOME/.ssh:$HOME/.ssh:ro" \
+    -v "$HOME/.aws:$HOME/.aws:ro" \
+    -v "$HOME/.gnupg:$HOME/.gnupg:ro" \
     -v /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro \
     -v /usr/bin:/host/bin:ro \
     -v /usr/lib/git-core:/host/lib/git-core:ro \
