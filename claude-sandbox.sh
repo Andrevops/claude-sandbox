@@ -6,7 +6,7 @@ _claude_docker() {
   docker run -it --rm \
     --user "$(id -u):$(id -g)" \
     --group-add "$(stat -c '%g' /var/run/docker.sock)" \
-    --hostname sandbox \
+    --hostname "${SANDBOX_HOSTNAME:-sandbox}" \
     --network host \
     -e HOME="$HOME" \
     -e PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME/.local/bin" \
@@ -28,5 +28,5 @@ _claude_docker() {
 # Drop into an interactive bash shell inside the sandbox
 alias sandbox='_claude_docker bash -l'
 
-# Run Claude Code with --dangerously-skip-permissions (works inside or outside container)
-alias yolo='claude -c --dangerously-skip-permissions'
+# Run Claude Code with --dangerously-skip-permissions inside the sandbox
+alias yolo='SANDBOX_HOSTNAME=yolo _claude_docker claude -c --dangerously-skip-permissions'
