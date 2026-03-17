@@ -28,3 +28,6 @@ _claude_docker() {
 
 # Open an interactive shell inside the sandbox
 alias sandbox='_claude_docker bash'
+
+# Run Claude Code with --dangerously-skip-permissions inside the sandbox
+alias yolo='SANDBOX_HOSTNAME=yolo _claude_docker claude -c --dangerously-skip-permissions'
