@@ -92,7 +92,7 @@ main() {
   pull_image
   echo ""
   echo "Done! Run 'source ~/.bashrc' then:"
-  echo "  sandbox  — claude session in container"
+  echo "  sandbox  — interactive shell in container"
   echo "  yolo     — claude with skip-permissions in container"
 }
 

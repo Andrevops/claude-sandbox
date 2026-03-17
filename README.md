@@ -1,20 +1,19 @@
 # Claude Sandbox
 
-Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) inside a lightweight Docker container using your host's native binary — no npm install, no image builds, instant startup.
+A lightweight Docker sandbox for development — drop into an isolated shell at your current directory with all your host tools available. Optionally run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with `--dangerously-skip-permissions` inside the container where the blast radius is limited by Docker.
 
 ## Why?
 
-- **Sandboxed execution** — Claude Code runs in an isolated container, not directly on your host
-- **Zero build time** — mounts the host's Claude binary directly, no Docker image to build or maintain
-- **Always up to date** — uses whatever version is installed on your host
+- **Sandboxed shell** — work inside a disposable container, not directly on your host
+- **Zero build time** — mounts host binaries and libraries directly, no Docker image to build or maintain
 - **Full tooling** — all host binaries in `/usr/bin` are available via `/host/bin`
-- **Seamless auth** — shares your existing OAuth session, SSH keys, git config, and AWS credentials
+- **Seamless auth** — shares your SSH keys, git config, and AWS credentials (read-only)
 
 ## Requirements
 
 - Linux / WSL2
 - Docker
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed on the host (`~/.local/bin/claude`)
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed on the host (`~/.local/bin/claude`) — only needed for the `yolo` command
 
 ## Quick Start
 
@@ -37,7 +36,7 @@ source ~/.bashrc
 ### 2. Use
 
 ```bash
-# Run Claude Code inside the sandbox
+# Open an interactive shell inside the sandbox
 sandbox
 
 # Run Claude Code with --dangerously-skip-permissions inside the sandbox
@@ -48,27 +47,27 @@ yolo
 
 | Command | Description |
 |---------|-------------|
-| `sandbox` | Runs `claude -c` inside the container at your current directory |
+| `sandbox` | Opens an interactive bash shell inside the container at your current directory |
 | `yolo` | Runs `claude -c --dangerously-skip-permissions` inside the container (hostname: `yolo`) |
 
-Inside the sandbox you have full access to `claude`, `git`, `docker`, `ssh`, `jq`, `make`, and all other host binaries via `/host/bin`.
+Inside the sandbox you have full access to `git`, `docker`, `ssh`, `jq`, `make`, and all other host binaries via `/host/bin`. You can also run `claude` manually from inside the shell.
 
 ## How is this different from Claude Code's `/sandbox`?
 
 Claude Code has a built-in `/sandbox` command that uses OS-level isolation (bubblewrap on Linux, Seatbelt on macOS) to restrict what individual tool calls can access. It's a security feature that limits filesystem writes and filters network requests.
 
-This repo is different — it wraps the **entire Claude process** inside a Docker container:
+This repo is different — it wraps your **entire session** inside a Docker container:
 
 | | Claude Code `/sandbox` | claude-sandbox (this repo) |
 |---|---|---|
-| **Scope** | Restricts individual Bash commands | Isolates the entire Claude session |
+| **Scope** | Restricts individual Bash commands | Isolates the entire session |
 | **Technology** | OS-level (bubblewrap / Seatbelt) | Docker container |
 | **Filesystem** | Write-restricted to CWD + allowlist | Container boundary — only sees mounted paths |
 | **Network** | Proxy-based domain allowlist | Host network (no filtering) |
 | **Tools** | Some break (docker, watchman) | All host binaries available via `/host/bin` |
 | **Use case** | Hardened security for autonomous agents | Dev workflow with full autonomy (`yolo`) |
 
-The main value here is the `yolo` workflow: run `--dangerously-skip-permissions` inside a disposable container where the blast radius is limited by Docker. You can also enable `/sandbox` *inside* the container for defense-in-depth.
+The main value of `yolo` is running `--dangerously-skip-permissions` inside a disposable container where the blast radius is limited by Docker. You can also enable `/sandbox` *inside* the container for defense-in-depth.
 
 ## How It Works
 
@@ -77,11 +76,12 @@ Host (WSL2 / Linux)
  |
  ├── $HOME                 ──► mounted (full home directory)
  ├── /usr/bin              ──► mounted read-only to /host/bin
- ├── /usr/lib/git-core     ──► mounted read-only to /host/lib/git-core
+ ├── /usr/lib              ──► mounted read-only (shared libraries + git-core)
  ├── /lib/x86_64-linux-gnu ──► mounted read-only (shared libraries)
  ├── /usr/bin/docker       ──► mounted read-only (resolved via readlink)
  ├── /var/run/docker.sock  ──► mounted (Docker-in-Docker access)
- └── /etc/passwd, /etc/group ► mounted read-only (uid resolution)
+ └── /etc/passwd, group,   ──► mounted read-only (uid resolution + manpath)
+     manpath.config
          │
          ▼
    ┌─────────────────────────────┐
@@ -93,10 +93,13 @@ Host (WSL2 / Linux)
    │  - Host network mode        │
    │  - Working dir = host $PWD  │
    │  - Hostname: sandbox / yolo │
+   │  - PS1 shows hostname       │
    └─────────────────────────────┘
 ```
 
 The container runs as your host user (same uid/gid), uses host networking, and mounts your entire home directory. The working directory matches wherever you launched the command from.
+
+The container's prompt is overridden via `PROMPT_COMMAND` to show the container hostname (`sandbox` or `yolo`) regardless of your host's PS1 configuration.
 
 ## Configuration
 
@@ -106,11 +109,11 @@ The default is `ubuntu:22.04` to match a typical WSL2 host. Change it in `claude
 
 ### Hostname
 
-The hostname defaults to `sandbox` and can be overridden via the `SANDBOX_HOSTNAME` environment variable. The `yolo` alias sets it to `yolo` automatically. Your PS1 should use `\h` to display it:
+The hostname defaults to `sandbox` and can be overridden via the `SANDBOX_HOSTNAME` environment variable. The `yolo` alias sets it to `yolo` automatically.
 
-```bash
-PS1="\h:\w\$ "
-```
+### Prompt
+
+The container sets `PROMPT_COMMAND` to override PS1 with a colored prompt showing the hostname, working directory, and git branch. To customize it, edit the `PROMPT_COMMAND` env var in `claude-sandbox.sh`.
 
 ## Security Considerations
 
@@ -138,7 +141,7 @@ The installer handles this automatically. If it still happens, add `hasCompleted
 The setup adds your user to the Docker socket's group via `--group-add`. If it still fails, check the socket permissions: `stat -c '%g' /var/run/docker.sock`.
 
 ### Tool not found
-All host binaries from `/usr/bin` are mounted at `/host/bin` and added to `PATH`. If a binary lives elsewhere, add a `-v` mount for it in `claude-sandbox.sh`. Dynamically linked binaries work because `/lib/x86_64-linux-gnu` is mounted.
+All host binaries from `/usr/bin` are mounted at `/host/bin` and added to `PATH`. If a binary lives elsewhere, add a `-v` mount for it in `claude-sandbox.sh`. Dynamically linked binaries work because `/lib/x86_64-linux-gnu` and `/usr/lib` are mounted.
 
 ## License
 
