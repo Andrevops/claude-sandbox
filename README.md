@@ -138,17 +138,39 @@ Anthropic provides a [reference devcontainer](https://github.com/anthropics/clau
 
 ## Security Considerations
 
-This sandbox limits blast radius via Docker, but it is **not a security boundary** against a determined attacker. Two things to be aware of:
+This sandbox prioritizes **convenience over isolation**. It limits blast radius via Docker but is **not a security boundary** against a determined attacker. Understand what it does and doesn't protect before running untrusted code.
 
-- **Docker socket is mounted** — the container has full access to the Docker daemon, which is effectively root-equivalent on the host. This is required for the `docker` CLI to work inside the sandbox. If you don't need Docker access, remove the `-v /var/run/docker.sock` line.
+### What this sandbox provides
 
-- **`$HOME` is mounted read-write** but sensitive directories (`.ssh`, `.aws`, `.gnupg`) are overlaid as read-only by default. To protect additional paths, add more read-only overlays in `claude-sandbox.sh`:
+- **Process isolation** — the container is a separate PID/mount/UTS namespace, so a runaway process can't directly signal or inspect host processes
+- **Disposable environment** — `--rm` ensures nothing persists in the container after exit; any damage is limited to mounted paths
+- **Read-only sensitive dirs** — `.ssh`, `.aws`, `.gnupg` are overlaid as read-only, preventing accidental credential modification
 
-```bash
--v "$HOME/.kube:$HOME/.kube:ro" \
-```
+### What it does NOT provide
 
-For defense-in-depth, enable Claude Code's built-in `/sandbox` inside the container as well.
+- **Network isolation** — host network mode means the container has the same network access as your host. A malicious process can reach any endpoint you can, including internal services, cloud metadata APIs (`169.254.169.254`), and exfiltration targets. The [official devcontainer](https://code.claude.com/docs/en/devcontainer) solves this with a default-deny firewall that whitelists only npm, GitHub, and the Claude API.
+
+- **Filesystem isolation** — `$HOME` is mounted read-write. The container can read/modify your git config, shell history, Claude credentials (`~/.claude`), and any file in your home directory. The official devcontainer isolates the workspace to `/workspace` with no host home mount.
+
+- **Docker socket = root** — the mounted Docker socket gives the container full control over the Docker daemon, which is effectively root-equivalent on the host. It can spawn privileged containers, mount the host filesystem, or manipulate other running containers. Remove the `-v /var/run/docker.sock` line if you don't need Docker access.
+
+- **No credential scoping** — Claude's API key and OAuth tokens in `~/.claude` are fully accessible. The official devcontainer warns that even with its firewall, `--dangerously-skip-permissions` doesn't prevent exfiltration of anything accessible in the container.
+
+### Hardening options
+
+To tighten security while keeping the convenience of this approach:
+
+| Hardening | How |
+|-----------|-----|
+| Protect additional paths | Add read-only overlays: `-v "$HOME/.kube:$HOME/.kube:ro"` |
+| Remove Docker access | Delete the `-v /var/run/docker.sock` and docker binary mount lines |
+| Restrict network | Replace `--network host` with a custom Docker network + iptables rules |
+| Defense-in-depth | Enable Claude Code's built-in `/sandbox` inside the container |
+| Limit home exposure | Mount only the project directory instead of all of `$HOME` |
+
+### Bottom line
+
+Use this sandbox for **trusted development workflows** where you value speed and tool access over hard isolation. For running autonomous agents against untrusted repos, or in shared/production environments, use the [official devcontainer](https://code.claude.com/docs/en/devcontainer) with its network firewall and isolated workspace.
 
 ## Troubleshooting
 
