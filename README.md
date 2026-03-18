@@ -115,6 +115,27 @@ The hostname defaults to `sandbox` and can be overridden via the `SANDBOX_HOSTNA
 
 The container sets `PROMPT_COMMAND` to override PS1 with a colored prompt showing the hostname, working directory, and git branch. To customize it, edit the `PROMPT_COMMAND` env var in `claude-sandbox.sh`.
 
+## How is this different from the official devcontainer?
+
+Anthropic provides a [reference devcontainer](https://github.com/anthropics/claude-code/tree/main/.devcontainer) for running Claude Code in a secure, reproducible environment. It's a different tool for a different job:
+
+| | **claude-sandbox** (this repo) | **[Official devcontainer](https://code.claude.com/docs/en/devcontainer)** |
+|---|---|---|
+| **Approach** | Mount host binaries into a bare `ubuntu:22.04` | Build a full image from `node:20` with npm packages |
+| **Build time** | Zero — just `docker pull ubuntu:22.04` | Full image build (npm install, zsh, git-delta, etc.) |
+| **Claude install** | Uses host's binary via `$HOME/.local/bin` | `npm install -g @anthropic-ai/claude-code` baked in |
+| **Updates** | Instant — always uses host's Claude version | Requires image rebuild |
+| **Network security** | Host network, no filtering | Firewall with default-deny, whitelisted domains only |
+| **Filesystem** | Mounts `$HOME` read-write, sensitive dirs read-only | Isolated `/workspace`, no host home mount |
+| **Shell** | Bash (host's `.bashrc`) | Zsh + powerlevel10k + fzf |
+| **Docker access** | Yes (socket mounted) | No |
+| **IDE integration** | None (terminal-only) | VS Code Dev Containers extension |
+| **Target use case** | Quick interactive shell / `yolo` mode | Team-wide standardized secure environment |
+
+**When to use which:**
+- **claude-sandbox** — personal dev workflow, quick experiments, need Docker/host tools inside the container
+- **Official devcontainer** — team environments, CI/CD, autonomous agents where network isolation matters
+
 ## Security Considerations
 
 This sandbox limits blast radius via Docker, but it is **not a security boundary** against a determined attacker. Two things to be aware of:
