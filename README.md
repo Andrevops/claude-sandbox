@@ -48,7 +48,7 @@ yolo
 | Command | Description |
 |---------|-------------|
 | `sandbox` | Opens an interactive bash shell inside the container at your current directory |
-| `yolo` | Runs `claude -c --dangerously-skip-permissions` inside the container (hostname: `yolo`) |
+| `yolo` | Runs `claude --dangerously-skip-permissions` inside the container — resumes the last session if one exists, otherwise starts fresh (hostname: `yolo`) |
 
 Inside the sandbox you have full access to `git`, `docker`, `ssh`, `jq`, `make`, and all other host binaries via `/host/bin`. You can also run `claude` manually from inside the shell.
 

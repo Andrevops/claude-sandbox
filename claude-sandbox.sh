@@ -32,4 +32,4 @@ _claude_docker() {
 alias sandbox='_claude_docker bash'
 
 # Run Claude Code with --dangerously-skip-permissions inside the sandbox
-alias yolo='SANDBOX_HOSTNAME=yolo _claude_docker claude -c --dangerously-skip-permissions'
+alias yolo='SANDBOX_HOSTNAME=yolo _claude_docker bash -c "claude -c --dangerously-skip-permissions 2>/dev/null || claude --dangerously-skip-permissions"'
