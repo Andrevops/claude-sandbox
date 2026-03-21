@@ -3,7 +3,18 @@
 # Source this file in your .bashrc or copy the contents directly
 
 _claude_docker() {
+  local mode="${SANDBOX_HOSTNAME:-sandbox}"
+  local dir_hash
+  dir_hash=$(printf '%s' "$PWD" | md5sum | cut -c1-8)
+  local name="claude-${mode}-${dir_hash}"
+  # Stop orphaned container for this directory (if any)
+  if docker ps -a -q --filter "name=^${name}$" | grep -q .; then
+    docker rm -f "$name" >/dev/null 2>&1
+  fi
   docker run -it --rm \
+    --name "$name" \
+    --label "claude-sandbox" \
+    --label "claude-sandbox.dir=$PWD" \
     --user "$(id -u):$(id -g)" \
     --group-add "$(stat -c '%g' /var/run/docker.sock)" \
     --hostname "${SANDBOX_HOSTNAME:-sandbox}" \
