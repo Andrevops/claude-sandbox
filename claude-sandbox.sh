@@ -20,7 +20,7 @@ _claude_docker() {
     --hostname "${SANDBOX_HOSTNAME:-sandbox}" \
     --network host \
     -e HOME="$HOME" \
-    -e PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/host/bin:$HOME/.local/bin" \
+    -e PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/host/bin:$PATH" \
     -e PROMPT_COMMAND='PS1="\[\033[1;36m\]\h\[\033[0m\]:\[\033[1;33m\]\w\[\033[0m\]\[\033[1;32m\]$(parse_git_branch 2>/dev/null)\[\033[0m\]\[\033[1;37m\]\$ \[\033[0m\]"' \
     -v "$HOME:$HOME" \
     -v "$HOME/.ssh:$HOME/.ssh:ro" \
