@@ -11,6 +11,18 @@ _claude_docker() {
   if docker ps -a -q --filter "name=^${name}$" | grep -q .; then
     docker rm -f "$name" >/dev/null 2>&1
   fi
+  # SANDBOX_MOUNTS: newline-separated list of Docker bind mounts to add
+  # Each line uses standard -v syntax (src:dest or src:dest:ro)
+  # Example:
+  #   export SANDBOX_MOUNTS="
+  #     /mnt/c/Users/me/Documents/vault:/data/vault
+  #     /opt/tools:/opt/tools:ro
+  #   "
+  local extra_mounts=()
+  while IFS= read -r m; do
+    m="${m#"${m%%[![:space:]]*}"}"  # trim leading whitespace
+    [[ -n "$m" ]] && extra_mounts+=(-v "$m")
+  done <<< "${SANDBOX_MOUNTS:-}"
   docker run -it --rm \
     --name "$name" \
     --label "claude-sandbox" \
@@ -33,6 +45,7 @@ _claude_docker() {
     -v "$(readlink -f /usr/bin/docker):/usr/bin/docker:ro" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc:/etc:ro \
+    "${extra_mounts[@]}" \
     -w "$PWD" \
     ubuntu:22.04 \
     "$@"

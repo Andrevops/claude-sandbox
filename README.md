@@ -115,6 +115,19 @@ The hostname defaults to `sandbox` and can be overridden via the `SANDBOX_HOSTNA
 
 The container sets `PROMPT_COMMAND` to override PS1 with a colored prompt showing the hostname, working directory, and git branch. To customize it, edit the `PROMPT_COMMAND` env var in `claude-sandbox.sh`.
 
+### Extra mounts
+
+Set `SANDBOX_MOUNTS` in your `.bashrc` to bind additional paths into the container. Each line is a standard Docker `-v` mount spec:
+
+```bash
+export SANDBOX_MOUNTS="
+  /mnt/c/Users/me/Documents/vault:/home/me/vault
+  /opt/shared-tools:/opt/shared-tools:ro
+"
+```
+
+This is useful for paths outside `$HOME` that the container needs access to, such as Windows filesystem paths on WSL2 or shared team directories. If unset, no extra mounts are added.
+
 ## How is this different from the official devcontainer?
 
 Anthropic provides a [reference devcontainer](https://github.com/anthropics/claude-code/tree/main/.devcontainer) for running Claude Code in a secure, reproducible environment. It's a different tool for a different job:
