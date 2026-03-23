@@ -6,7 +6,7 @@ A lightweight Docker sandbox for development — drop into an isolated shell at 
 
 - **Sandboxed shell** — work inside a disposable container, not directly on your host
 - **Zero build time** — mounts host binaries and libraries directly, no Docker image to build or maintain
-- **Full tooling** — all host binaries in `/usr/bin` are available via `/host/bin`
+- **Full tooling** — all host binaries in `/usr/bin` are available at `/usr/bin`
 - **Seamless auth** — shares your SSH keys, git config, and AWS credentials (read-only)
 
 ## Requirements
@@ -50,7 +50,7 @@ yolo
 | `sandbox` | Opens an interactive bash shell inside the container at your current directory |
 | `yolo` | Runs `claude --dangerously-skip-permissions` inside the container — resumes the last session if one exists, otherwise starts fresh (hostname: `yolo`) |
 
-Inside the sandbox you have full access to `git`, `docker`, `ssh`, `jq`, `make`, and all other host binaries via `/host/bin`. You can also run `claude` manually from inside the shell.
+Inside the sandbox you have full access to `git`, `docker`, `ssh`, `jq`, `make`, and all other host binaries at `/usr/bin`. You can also run `claude` manually from inside the shell.
 
 ## How is this different from Claude Code's `/sandbox`?
 
@@ -64,7 +64,7 @@ This repo is different — it wraps your **entire session** inside a Docker cont
 | **Technology** | OS-level (bubblewrap / Seatbelt) | Docker container |
 | **Filesystem** | Write-restricted to CWD + allowlist | Container boundary — only sees mounted paths |
 | **Network** | Proxy-based domain allowlist | Host network (no filtering) |
-| **Tools** | Some break (docker, watchman) | All host binaries available via `/host/bin` |
+| **Tools** | Some break (docker, watchman) | All host binaries available at `/usr/bin` |
 | **Use case** | Hardened security for autonomous agents | Dev workflow with full autonomy (`yolo`) |
 
 The main value of `yolo` is running `--dangerously-skip-permissions` inside a disposable container where the blast radius is limited by Docker. You can also enable `/sandbox` *inside* the container for defense-in-depth.
@@ -75,7 +75,7 @@ The main value of `yolo` is running `--dangerously-skip-permissions` inside a di
 Host (WSL2 / Linux)
  |
  ├── $HOME                 ──► mounted (full home directory)
- ├── /usr/bin              ──► mounted read-only to /host/bin
+ ├── /usr/bin              ──► mounted read-only (host binaries at native paths)
  ├── /usr/lib              ──► mounted read-only (shared libraries + git-core)
  ├── /lib/x86_64-linux-gnu ──► mounted read-only (shared libraries)
  ├── /usr/bin/docker       ──► mounted read-only (resolved via readlink)
@@ -88,7 +88,7 @@ Host (WSL2 / Linux)
    │  ubuntu:22.04 container     │
    │  (~70MB base image)         │
    │                             │
-   │  - Host binaries in PATH    │
+   │  - Host binaries at /usr/bin │
    │  - Same uid/gid as host     │
    │  - Host network mode        │
    │  - Working dir = host $PWD  │
@@ -197,7 +197,7 @@ The installer handles this automatically. If it still happens, add `hasCompleted
 The setup adds your user to the Docker socket's group via `--group-add`. If it still fails, check the socket permissions: `stat -c '%g' /var/run/docker.sock`.
 
 ### Tool not found
-All host binaries from `/usr/bin` are mounted at `/host/bin` and added to `PATH`. If a binary lives elsewhere, add a `-v` mount for it in `claude-sandbox.sh`. Dynamically linked binaries work because `/lib/x86_64-linux-gnu` and `/usr/lib` are mounted.
+Host `/usr/bin` is mounted read-only, so all host binaries are at their native paths. If a binary lives elsewhere, add a `-v` mount for it in `claude-sandbox.sh` or use `SANDBOX_MOUNTS`. Dynamically linked binaries work because `/lib/x86_64-linux-gnu` and `/usr/lib` are mounted.
 
 ## License
 

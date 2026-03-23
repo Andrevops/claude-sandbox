@@ -32,7 +32,7 @@ _claude_docker() {
     --hostname "${SANDBOX_HOSTNAME:-sandbox}" \
     --network host \
     -e HOME="$HOME" \
-    -e PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/host/bin:$PATH" \
+    -e PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH" \
     -e PROMPT_COMMAND='PS1="\[\033[1;36m\]\h\[\033[0m\]:\[\033[1;33m\]\w\[\033[0m\]\[\033[1;32m\]$(parse_git_branch 2>/dev/null)\[\033[0m\]\[\033[1;37m\]\$ \[\033[0m\]"' \
     -v "$HOME:$HOME" \
     -v "$HOME/.ssh:$HOME/.ssh:ro" \
@@ -41,8 +41,7 @@ _claude_docker() {
     -v /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro \
     -v /usr/lib:/usr/lib:ro \
     -v /usr/share:/usr/share:ro \
-    -v /usr/bin:/host/bin:ro \
-    -v "$(readlink -f /usr/bin/docker):/usr/bin/docker:ro" \
+    -v /usr/bin:/usr/bin:ro \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc:/etc:ro \
     "${extra_mounts[@]}" \
