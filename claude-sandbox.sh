@@ -28,12 +28,11 @@ _claude_docker() {
     -v "$HOME/.gnupg:$HOME/.gnupg:ro" \
     -v /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro \
     -v /usr/lib:/usr/lib:ro \
+    -v /usr/share:/usr/share:ro \
     -v /usr/bin:/host/bin:ro \
     -v "$(readlink -f /usr/bin/docker):/usr/bin/docker:ro" \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    -v /etc/passwd:/etc/passwd:ro \
-    -v /etc/group:/etc/group:ro \
-    -v /etc/manpath.config:/etc/manpath.config:ro \
+    -v /etc:/etc:ro \
     -w "$PWD" \
     ubuntu:22.04 \
     "$@"
