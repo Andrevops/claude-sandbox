@@ -7,7 +7,7 @@ A lightweight Docker sandbox for development — drop into an isolated shell at 
 - **Sandboxed shell** — work inside a disposable container, not directly on your host
 - **Zero build time** — mounts host binaries and libraries directly, no Docker image to build or maintain
 - **Full tooling** — all host binaries in `/usr/bin` are available at `/usr/bin`
-- **Seamless auth** — shares your SSH keys, git config, and AWS credentials (read-only)
+- **Seamless auth** — shares your SSH keys (read-only), git config, and AWS credentials (including SSO token refresh)
 
 ## Requirements
 
@@ -157,7 +157,8 @@ This sandbox prioritizes **convenience over isolation**. It limits blast radius 
 
 - **Process isolation** — the container is a separate PID/mount/UTS namespace, so a runaway process can't directly signal or inspect host processes
 - **Disposable environment** — `--rm` ensures nothing persists in the container after exit; any damage is limited to mounted paths
-- **Read-only sensitive dirs** — `.ssh`, `.aws`, `.gnupg` are overlaid as read-only, preventing accidental credential modification
+- **Read-only sensitive dirs** — `.ssh` and `.gnupg` are overlaid as read-only, preventing accidental credential modification
+- **Writable AWS config** — `.aws` is mounted read-write so SSO token refresh (`aws sso login`) works inside the container
 
 ### What it does NOT provide
 
@@ -176,6 +177,7 @@ To tighten security while keeping the convenience of this approach:
 | Hardening | How |
 |-----------|-----|
 | Protect additional paths | Add read-only overlays: `-v "$HOME/.kube:$HOME/.kube:ro"` |
+| Lock down AWS credentials | Change `.aws` mount to `:ro` (breaks SSO token refresh) |
 | Remove Docker access | Delete the `-v /var/run/docker.sock` and docker binary mount lines |
 | Restrict network | Replace `--network host` with a custom Docker network + iptables rules |
 | Defense-in-depth | Enable Claude Code's built-in `/sandbox` inside the container |

@@ -23,6 +23,10 @@ _claude_docker() {
     m="${m#"${m%%[![:space:]]*}"}"  # trim leading whitespace
     [[ -n "$m" ]] && extra_mounts+=(-v "$m")
   done <<< "${SANDBOX_MOUNTS:-}"
+  # Build PATH: include host PATH plus any extra tool directories
+  local sandbox_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+  # Add AWS CLI dist directory if present
+  [[ -x "$HOME/aws/dist/aws" ]] && sandbox_path="$HOME/aws/dist:$sandbox_path"
   docker run -it --rm \
     --name "$name" \
     --label "claude-sandbox" \
@@ -32,11 +36,11 @@ _claude_docker() {
     --hostname "${SANDBOX_HOSTNAME:-sandbox}" \
     --network host \
     -e HOME="$HOME" \
-    -e PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH" \
+    -e PATH="$sandbox_path" \
     -e PROMPT_COMMAND='PS1="\[\033[1;36m\]\h\[\033[0m\]:\[\033[1;33m\]\w\[\033[0m\]\[\033[1;32m\]$(parse_git_branch 2>/dev/null)\[\033[0m\]\[\033[1;37m\]\$ \[\033[0m\]"' \
     -v "$HOME:$HOME" \
     -v "$HOME/.ssh:$HOME/.ssh:ro" \
-    -v "$HOME/.aws:$HOME/.aws:ro" \
+    -v "$HOME/.aws:$HOME/.aws" \
     -v "$HOME/.gnupg:$HOME/.gnupg:ro" \
     -v /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro \
     -v /usr/lib:/usr/lib:ro \
