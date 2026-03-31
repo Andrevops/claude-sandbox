@@ -46,6 +46,7 @@ _claude_docker() {
     -v /usr/lib:/usr/lib:ro \
     -v /usr/share:/usr/share:ro \
     -v /usr/bin:/usr/bin:ro \
+    -v "$(readlink -f "$(which docker)"):/usr/local/bin/docker:ro" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc:/etc:ro \
     "${extra_mounts[@]}" \
