@@ -76,13 +76,28 @@ install() {
   echo "Installed claude-sandbox into $BASHRC"
 }
 
-# Pull the base image
+# Pull the base image (non-fatal — may already be cached)
 pull_image() {
-  echo "Pulling ubuntu:22.04..."
-  docker pull ubuntu:22.04
+  local image="${SANDBOX_IMAGE:-ubuntu:22.04}"
+  echo "Pulling $image..."
+  docker pull "$image" 2>/dev/null || echo "Warning: could not pull $image — continuing with cached image"
+}
+
+uninstall() {
+  if grep -q "$MARKER" "$BASHRC" 2>/dev/null; then
+    sed -i "\|$MARKER|,\|$MARKER_END|d" "$BASHRC"
+    echo "Removed claude-sandbox from $BASHRC"
+    echo "Run 'source ~/.bashrc' to apply."
+  else
+    echo "claude-sandbox is not installed in $BASHRC"
+  fi
 }
 
 main() {
+  if [[ "${1:-}" == "--uninstall" ]]; then
+    uninstall
+    return
+  fi
   echo "=== Claude Sandbox Installer ==="
   echo ""
   check_prereqs
@@ -96,4 +111,4 @@ main() {
   echo "  yolo     — claude with skip-permissions in container"
 }
 
-main
+main "$@"
