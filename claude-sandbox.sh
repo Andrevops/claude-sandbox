@@ -2,15 +2,26 @@
 # Claude Sandbox — Run Claude Code in a lightweight Docker container
 # Source this file in your .bashrc or copy the contents directly
 
+# Prune exited/dead sandbox containers
+_sandbox_prune() {
+  docker container prune --filter "label=claude-sandbox" -f >/dev/null 2>&1
+}
+
+# Core: launch a new sandbox container
 _claude_docker() {
   local mode="${SANDBOX_HOSTNAME:-sandbox}"
   local dir_hash
   dir_hash=$(printf '%s' "$PWD" | md5sum | cut -c1-8)
   local name="claude-${mode}-${dir_hash}"
-  # Stop orphaned container for this directory (if any)
-  if docker ps -a -q --filter "name=^${name}$" | grep -q .; then
+
+  # Prune dead sandbox containers on every launch
+  _sandbox_prune
+
+  # Stop existing container for this directory (if any)
+  if docker ps -q --filter "name=^${name}$" | grep -q .; then
     docker rm -f "$name" >/dev/null 2>&1
   fi
+
   # SANDBOX_MOUNTS: newline-separated list of Docker bind mounts to add
   # Each line uses standard -v syntax (src:dest or src:dest:ro)
   # Example:
@@ -23,11 +34,26 @@ _claude_docker() {
     m="${m#"${m%%[![:space:]]*}"}"  # trim leading whitespace
     [[ -n "$m" ]] && extra_mounts+=(-v "$m")
   done <<< "${SANDBOX_MOUNTS:-}"
+
+  # Load project-specific env vars from .sandbox.env
+  local env_args=()
+  if [[ -f "$PWD/.sandbox.env" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      line="${line#"${line%%[![:space:]]*}"}"  # trim leading whitespace
+      [[ -z "$line" || "$line" == \#* ]] && continue
+      env_args+=(-e "$line")
+    done < "$PWD/.sandbox.env"
+  fi
+
   # Build PATH: include host PATH plus any extra tool directories
   local sandbox_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
   # Add AWS CLI dist directory if present
   [[ -x "$HOME/aws/dist/aws" ]] && sandbox_path="$HOME/aws/dist:$sandbox_path"
+
+  local image="${SANDBOX_IMAGE:-ubuntu:22.04}"
+
   docker run -it --rm \
+    --init \
     --name "$name" \
     --label "claude-sandbox" \
     --label "claude-sandbox.dir=$PWD" \
@@ -50,13 +76,58 @@ _claude_docker() {
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc:/etc:ro \
     "${extra_mounts[@]}" \
+    "${env_args[@]}" \
     -w "$PWD" \
-    ubuntu:22.04 \
+    "$image" \
     "$@"
 }
 
-# Open an interactive shell inside the sandbox
-alias sandbox='_claude_docker bash'
+# sandbox — subcommand interface
+sandbox() {
+  case "${1:-shell}" in
+    shell)
+      _claude_docker bash
+      ;;
+    ls|list)
+      docker ps --filter "label=claude-sandbox" \
+        --format "table {{.Names}}\t{{.Status}}\t{{.Label \"claude-sandbox.dir\"}}"
+      ;;
+    stop)
+      local containers
+      containers=$(docker ps -q --filter "label=claude-sandbox")
+      if [[ -n "$containers" ]]; then
+        echo "$containers" | xargs docker stop >/dev/null
+        _sandbox_prune
+        echo "Stopped all sandbox containers."
+      else
+        echo "No running sandbox containers."
+      fi
+      ;;
+    exec)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Usage: sandbox exec <command> [args...]"
+        return 1
+      fi
+      _claude_docker "$@"
+      ;;
+    attach)
+      local mode="${SANDBOX_HOSTNAME:-sandbox}"
+      local dir_hash
+      dir_hash=$(printf '%s' "$PWD" | md5sum | cut -c1-8)
+      local name="claude-${mode}-${dir_hash}"
+      if docker ps -q --filter "name=^${name}$" | grep -q .; then
+        docker exec -it "$name" bash
+      else
+        echo "No running sandbox for this directory. Use 'sandbox' to start one."
+      fi
+      ;;
+    *)
+      echo "Usage: sandbox [shell|ls|stop|exec <cmd>|attach]"
+      return 1
+      ;;
+  esac
+}
 
 # Run Claude Code with --dangerously-skip-permissions inside the sandbox
 alias yolo='SANDBOX_HOSTNAME=yolo _claude_docker bash -c "claude -c --dangerously-skip-permissions 2>/dev/null || claude --dangerously-skip-permissions"'

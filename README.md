@@ -48,9 +48,17 @@ yolo
 | Command | Description |
 |---------|-------------|
 | `sandbox` | Opens an interactive bash shell inside the container at your current directory |
+| `sandbox ls` | Lists all running sandbox containers |
+| `sandbox stop` | Stops all running sandbox containers |
+| `sandbox exec <cmd>` | Runs a one-off command inside a new container |
+| `sandbox attach` | Attaches to a running container for the current directory |
 | `yolo` | Runs `claude --dangerously-skip-permissions` inside the container — resumes the last session if one exists, otherwise starts fresh (hostname: `yolo`) |
 
 Inside the sandbox you have full access to `git`, `docker`, `ssh`, `jq`, `make`, and all other host binaries at `/usr/bin`. You can also run `claude` manually from inside the shell.
+
+### Container lifecycle
+
+Stale containers are automatically cleaned up. Every `sandbox` or `yolo` launch prunes any exited sandbox containers. Containers run with `--init` (tini) so signals are properly forwarded when terminals disconnect (e.g., VS Code reloads). Use `sandbox ls` to see what's running and `sandbox stop` to clean up everything.
 
 ## How is this different from Claude Code's `/sandbox`?
 
@@ -105,7 +113,11 @@ The container's prompt is overridden via `PROMPT_COMMAND` to show the container 
 
 ### Base image
 
-The default is `ubuntu:22.04` to match a typical WSL2 host. Change it in `claude-sandbox.sh` if your host runs a different distro.
+The default is `ubuntu:22.04` to match a typical WSL2 host. Override it via the `SANDBOX_IMAGE` environment variable:
+
+```bash
+SANDBOX_IMAGE=ubuntu:24.04 sandbox
+```
 
 ### Hostname
 
@@ -127,6 +139,19 @@ export SANDBOX_MOUNTS="
 ```
 
 This is useful for paths outside `$HOME` that the container needs access to, such as Windows filesystem paths on WSL2 or shared team directories. If unset, no extra mounts are added.
+
+### Per-project environment variables
+
+Create a `.sandbox.env` file in your project directory to inject env vars into the container:
+
+```bash
+# .sandbox.env
+AWS_PROFILE=dev
+NODE_ENV=development
+MY_API_KEY=sk-test-1234
+```
+
+Lines starting with `#` are ignored. The file is loaded automatically when launching from that directory. Add `.sandbox.env` to your `.gitignore` to avoid committing secrets.
 
 ## How is this different from the official devcontainer?
 
