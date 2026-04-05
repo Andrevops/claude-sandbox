@@ -122,8 +122,30 @@ sandbox() {
         echo "No running sandbox for this directory. Use 'sandbox' to start one."
       fi
       ;;
+    help|-h|--help)
+      cat <<'HELP'
+sandbox — Docker sandbox for development
+
+Commands:
+  sandbox              Open an interactive shell (default)
+  sandbox ls           List running sandbox containers
+  sandbox stop         Stop all sandbox containers
+  sandbox exec <cmd>   Run a one-off command in a new container
+  sandbox attach       Attach to a running container for this directory
+
+  yolo                 Run Claude Code with --dangerously-skip-permissions
+
+Environment:
+  SANDBOX_IMAGE        Override base image (default: ubuntu:22.04)
+  SANDBOX_HOSTNAME     Override container hostname (default: sandbox)
+  SANDBOX_MOUNTS       Extra bind mounts (newline-separated, -v syntax)
+
+Per-project:
+  .sandbox.env         Auto-loaded env vars (KEY=VALUE, one per line)
+HELP
+      ;;
     *)
-      echo "Usage: sandbox [shell|ls|stop|exec <cmd>|attach]"
+      echo "Unknown command: $1 (try 'sandbox help')"
       return 1
       ;;
   esac
