@@ -117,7 +117,7 @@ sandbox() {
       dir_hash=$(printf '%s' "$PWD" | md5sum | cut -c1-8)
       local name="claude-${mode}-${dir_hash}"
       if docker ps -q --filter "name=^${name}$" | grep -q .; then
-        docker exec -it "$name" bash
+        docker exec -it --user "$(id -u):$(id -g)" "$name" bash
       else
         echo "No running sandbox for this directory. Use 'sandbox' to start one."
       fi
