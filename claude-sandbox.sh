@@ -153,3 +153,4 @@ HELP
 
 # Run Claude Code with --dangerously-skip-permissions inside the sandbox
 alias yolo='SANDBOX_HOSTNAME=yolo _claude_docker bash -c "claude -c --dangerously-skip-permissions 2>/dev/null || claude --dangerously-skip-permissions"'
+alias yolonew='SANDBOX_HOSTNAME=yolo _claude_docker bash -c "claude --dangerously-skip-permissions"'
