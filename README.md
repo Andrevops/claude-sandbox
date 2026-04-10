@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/icon-animated.gif" alt="Claude Sandbox" width="128" />
+</p>
+
 # Claude Sandbox
 
 A lightweight Docker sandbox for development — drop into an isolated shell at your current directory with all your host tools available. Optionally run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with `--dangerously-skip-permissions` inside the container where the blast radius is limited by Docker.
