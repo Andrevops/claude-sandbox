@@ -9,6 +9,11 @@ RUN apt-get update \
        | xargs apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* /tmp/packages.txt
 
+# Install Node.js LTS + npm
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install Claude Code (binary)
 RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN cp /root/.local/share/claude/versions/* /usr/local/bin/claude && chmod 755 /usr/local/bin/claude
