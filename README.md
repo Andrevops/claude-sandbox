@@ -9,15 +9,17 @@ A lightweight Docker sandbox for development — drop into an isolated shell at 
 ## Why?
 
 - **Sandboxed shell** — work inside a disposable container, not directly on your host
-- **Zero build time** — mounts host binaries and libraries directly, no Docker image to build or maintain
-- **Full tooling** — all host binaries in `/usr/bin` are available at `/usr/bin`
-- **Seamless auth** — shares your SSH keys (read-only), git config, and AWS credentials (including SSO token refresh)
+- **Seamless auth** — shares your SSH keys (read-only), git config, AWS credentials, and Claude session
+- **Cross-platform** — works on Linux, WSL2, and macOS (including Apple Silicon)
 
 ## Requirements
 
-- Linux / WSL2
-- Docker
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed on the host (`~/.local/bin/claude`) — only needed for the `yolo` command
+| Platform | Requirements |
+|----------|-------------|
+| **Linux / WSL2** | Docker, [Claude Code](https://docs.anthropic.com/en/docs/claude-code) on the host |
+| **macOS** | Docker Desktop |
+
+On Linux/WSL2, host binaries are mounted directly into the container (zero build time). On macOS, a Docker image is built with Claude and Docker CLI pre-installed (one-time build, then cached).
 
 ## Quick Start
 
@@ -26,15 +28,13 @@ A lightweight Docker sandbox for development — drop into an isolated shell at 
 ```bash
 git clone git@github.com:aeanez/claude-sandbox.git
 cd claude-sandbox
-bash install.sh
-source ~/.bashrc
+make install
 ```
 
-Or manually — copy the function and aliases from [`claude-sandbox.sh`](claude-sandbox.sh) into your `~/.bashrc`:
+The installer auto-detects your shell (`bash`/`zsh`) and platform. On macOS it builds the sandbox image during install.
 
 ```bash
-cat claude-sandbox.sh >> ~/.bashrc
-source ~/.bashrc
+source ~/.bashrc   # or: source ~/.zshrc on macOS
 ```
 
 ### 2. Use
@@ -56,9 +56,19 @@ yolo
 | `sandbox stop` | Stops all running sandbox containers |
 | `sandbox exec <cmd>` | Runs a one-off command inside a new container |
 | `sandbox attach` | Attaches to a running container for the current directory |
+| `sandbox help` | Shows help |
 | `yolo` | Runs `claude --dangerously-skip-permissions` inside the container — resumes the last session if one exists, otherwise starts fresh (hostname: `yolo`) |
+| `yolonew` | Same as `yolo` but always starts a fresh session |
 
-Inside the sandbox you have full access to `git`, `docker`, `ssh`, `jq`, `make`, and all other host binaries at `/usr/bin`. You can also run `claude` manually from inside the shell.
+### Makefile targets
+
+| Target | Description |
+|--------|-------------|
+| `make install` | Install claude-sandbox into your shell rc file |
+| `make uninstall` | Remove claude-sandbox from your shell rc file |
+| `make build` | Build the macOS Docker image (macOS only, skipped on Linux) |
+| `make rebuild` | Rebuild the image from scratch — no cache (macOS only) |
+| `make status` | Show image info and running containers |
 
 ### Container lifecycle
 
@@ -76,24 +86,27 @@ This repo is different — it wraps your **entire session** inside a Docker cont
 | **Technology** | OS-level (bubblewrap / Seatbelt) | Docker container |
 | **Filesystem** | Write-restricted to CWD + allowlist | Container boundary — only sees mounted paths |
 | **Network** | Proxy-based domain allowlist | Host network (no filtering) |
-| **Tools** | Some break (docker, watchman) | All host binaries available at `/usr/bin` |
+| **Tools** | Some break (docker, watchman) | All host binaries available |
 | **Use case** | Hardened security for autonomous agents | Dev workflow with full autonomy (`yolo`) |
 
 The main value of `yolo` is running `--dangerously-skip-permissions` inside a disposable container where the blast radius is limited by Docker. You can also enable `/sandbox` *inside* the container for defense-in-depth.
 
 ## How It Works
 
+### Linux / WSL2
+
+Host binaries and libraries are mounted directly into the container — zero build time, instant startup.
+
 ```
 Host (WSL2 / Linux)
  |
- ├── $HOME                 ──► mounted (full home directory)
- ├── /usr/bin              ──► mounted read-only (host binaries at native paths)
+ ├── $HOME                 ──► mounted (full home directory incl. ~/.claude)
+ ├── /usr/bin              ──► mounted read-only (host binaries)
  ├── /usr/lib              ──► mounted read-only (shared libraries + git-core)
  ├── /lib/x86_64-linux-gnu ──► mounted read-only (shared libraries)
- ├── /usr/bin/docker       ──► mounted read-only (resolved via readlink)
+ ├── docker binary         ──► mounted read-only (resolved via readlink)
  ├── /var/run/docker.sock  ──► mounted (Docker-in-Docker access)
- └── /etc/passwd, group,   ──► mounted read-only (uid resolution + manpath)
-     manpath.config
+ └── /etc                  ──► mounted read-only (uid resolution + config)
          │
          ▼
    ┌─────────────────────────────┐
@@ -104,20 +117,66 @@ Host (WSL2 / Linux)
    │  - Same uid/gid as host     │
    │  - Host network mode        │
    │  - Working dir = host $PWD  │
-   │  - Hostname: sandbox / yolo │
-   │  - PS1 shows hostname       │
    └─────────────────────────────┘
 ```
 
-The container runs as your host user (same uid/gid), uses host networking, and mounts your entire home directory. The working directory matches wherever you launched the command from.
+### macOS
 
-The container's prompt is overridden via `PROMPT_COMMAND` to show the container hostname (`sandbox` or `yolo`) regardless of your host's PS1 configuration.
+macOS binaries (Mach-O) can't run in Linux containers (ELF), so a Docker image is built with tools pre-installed. Your home directory (including `~/.claude` config and session) is still mounted from the host.
+
+```
+Host (macOS)
+ |
+ ├── $HOME                 ──► mounted (full home directory incl. ~/.claude)
+ ├── ~/.ssh                ──► mounted read-only
+ ├── ~/.aws                ──► mounted read-write (SSO token refresh)
+ ├── ~/.gnupg              ──► mounted read-only
+ └── /var/run/docker.sock  ──► mounted (Docker access)
+         │
+         ▼
+   ┌──────────────────────────────────┐
+   │  claude-sandbox:latest container │
+   │  (built from Dockerfile.macos)  │
+   │                                  │
+   │  - Claude binary (pre-installed) │
+   │  - Docker CLI (pre-installed)    │
+   │  - Packages from packages.txt   │
+   │  - Same uid/gid as host         │
+   │  - Host network mode            │
+   │  - Working dir = host $PWD      │
+   └──────────────────────────────────┘
+```
+
+### Customizing the macOS image
+
+Edit `packages.txt` to add or remove apt packages installed in the container:
+
+```
+# packages.txt
+curl
+ca-certificates
+git
+openssh-client
+gnupg
+vim
+jq
+wget
+# Add your packages here
+htop
+python3
+```
+
+Then rebuild:
+
+```bash
+make build
+```
 
 ## Configuration
 
 ### Base image
 
-The default is `ubuntu:22.04` to match a typical WSL2 host. Override it via the `SANDBOX_IMAGE` environment variable:
+On Linux the default is `ubuntu:22.04`. On macOS the default is `claude-sandbox:latest`. Override via `SANDBOX_IMAGE`:
 
 ```bash
 SANDBOX_IMAGE=ubuntu:24.04 sandbox
@@ -133,7 +192,7 @@ The container sets `PROMPT_COMMAND` to override PS1 with a colored prompt showin
 
 ### Extra mounts
 
-Set `SANDBOX_MOUNTS` in your `.bashrc` to bind additional paths into the container. Each line is a standard Docker `-v` mount spec:
+Set `SANDBOX_MOUNTS` in your shell rc file to bind additional paths into the container. Each line is a standard Docker `-v` mount spec:
 
 ```bash
 export SANDBOX_MOUNTS="
@@ -163,16 +222,17 @@ Anthropic provides a [reference devcontainer](https://github.com/anthropics/clau
 
 | | **claude-sandbox** (this repo) | **[Official devcontainer](https://code.claude.com/docs/en/devcontainer)** |
 |---|---|---|
-| **Approach** | Mount host binaries into a bare `ubuntu:22.04` | Build a full image from `node:20` with npm packages |
-| **Build time** | Zero — just `docker pull ubuntu:22.04` | Full image build (npm install, zsh, git-delta, etc.) |
-| **Claude install** | Uses host's binary via `$HOME/.local/bin` | `npm install -g @anthropic-ai/claude-code` baked in |
-| **Updates** | Instant — always uses host's Claude version | Requires image rebuild |
+| **Approach** | Mount host binaries (Linux) or pre-built image (macOS) | Build a full image from `node:20` with npm packages |
+| **Build time** | Zero on Linux; one-time build on macOS | Full image build (npm install, zsh, git-delta, etc.) |
+| **Claude install** | Host binary (Linux) or pre-installed binary (macOS) | `npm install -g @anthropic-ai/claude-code` baked in |
+| **Updates** | Instant on Linux; `make rebuild` on macOS | Requires image rebuild |
 | **Network security** | Host network, no filtering | Firewall with default-deny, whitelisted domains only |
 | **Filesystem** | Mounts `$HOME` read-write, sensitive dirs read-only | Isolated `/workspace`, no host home mount |
-| **Shell** | Bash (host's `.bashrc`) | Zsh + powerlevel10k + fzf |
+| **Shell** | Bash (host's config) | Zsh + powerlevel10k + fzf |
 | **Docker access** | Yes (socket mounted) | No |
 | **IDE integration** | None (terminal-only) | VS Code Dev Containers extension |
 | **Target use case** | Quick interactive shell / `yolo` mode | Team-wide standardized secure environment |
+| **Platform** | Linux, WSL2, macOS | Any (Docker-based) |
 
 **When to use which:**
 - **claude-sandbox** — personal dev workflow, quick experiments, need Docker/host tools inside the container
@@ -216,19 +276,55 @@ To tighten security while keeping the convenience of this approach:
 
 Use this sandbox for **trusted development workflows** where you value speed and tool access over hard isolation. For running autonomous agents against untrusted repos, or in shared/production environments, use the [official devcontainer](https://code.claude.com/docs/en/devcontainer) with its network firewall and isolated workspace.
 
+## Authentication
+
+### Linux / WSL2
+
+Claude uses the host binary directly, so your existing login session works automatically — no extra setup needed.
+
+### macOS
+
+On macOS, Claude stores auth tokens in the **macOS Keychain**, which is not accessible from inside the container. You need to authenticate separately inside the sandbox. There are two options:
+
+**Option 1: Login inside the container (recommended)**
+
+Run `yolo` or `sandbox`, then run `/login` inside the container. This is a one-time step — the token is written to `~/.claude/` which is mounted from the host, so it persists across container restarts.
+
+> **Note:** This creates a separate session from your host login. Both sessions should remain valid, but if one invalidates the other, simply run `/login` again on whichever side was logged out.
+
+**Option 2: API key**
+
+If you have an Anthropic API key, add it to a `.sandbox.env` file in your project:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Or export it in your `~/.zshrc` so it's available everywhere (it will be passed into the container via the environment):
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
 ## Troubleshooting
 
 ### "No user exists for uid 1000"
-SSH needs to resolve your user. The setup mounts `/etc/passwd` and `/etc/group` read-only to fix this.
+SSH needs to resolve your user. On Linux/WSL2, the setup mounts `/etc/passwd` and `/etc/group` read-only to fix this.
 
 ### Claude asks for first-time setup
 The installer handles this automatically. If it still happens, add `hasCompletedOnboarding: true` and `theme: "dark"` to `~/.claude/.claude.json`.
 
 ### Docker permission denied
-The setup adds your user to the Docker socket's group via `--group-add`. If it still fails, check the socket permissions: `stat -c '%g' /var/run/docker.sock`.
+On Linux/WSL2, the setup adds your user to the Docker socket's group via `--group-add`. On macOS, Docker Desktop handles this automatically. If it still fails, check the socket permissions.
 
-### Tool not found
+### Tool not found (Linux/WSL2)
 Host `/usr/bin` is mounted read-only, so all host binaries are at their native paths. If a binary lives elsewhere, add a `-v` mount for it in `claude-sandbox.sh` or use `SANDBOX_MOUNTS`. Dynamically linked binaries work because `/lib/x86_64-linux-gnu` and `/usr/lib` are mounted.
+
+### Tool not found (macOS)
+Edit `packages.txt` to add the package, then run `make build` to rebuild the image.
+
+### Image not built (macOS)
+On first run, you'll be prompted to build the image. You can also build it manually with `make build` or rebuild from scratch with `make rebuild`.
 
 ## Andrevops Ecosystem
 

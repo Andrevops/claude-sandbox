@@ -7,15 +7,32 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_FILE="$SCRIPT_DIR/claude-sandbox.sh"
-BASHRC="$HOME/.bashrc"
 MARKER="# >>> claude-sandbox >>>"
 MARKER_END="# <<< claude-sandbox <<<"
+
+# Detect shell config file
+case "$(basename "$SHELL")" in
+  zsh)  RCFILE="$HOME/.zshrc" ;;
+  *)    RCFILE="$HOME/.bashrc" ;;
+esac
+
+# Portable sed -i
+_sed_inplace() {
+  if [[ "$OSTYPE" == darwin* ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
 
 # Check prerequisites
 check_prereqs() {
   local missing=()
   command -v docker &>/dev/null || missing+=("docker")
-  command -v claude &>/dev/null || missing+=("claude (https://docs.anthropic.com/en/docs/claude-code)")
+  # On macOS, claude lives inside the container — not required on host
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    command -v claude &>/dev/null || missing+=("claude (https://docs.anthropic.com/en/docs/claude-code)")
+  fi
 
   if [[ ${#missing[@]} -gt 0 ]]; then
     echo "Missing prerequisites:"
@@ -51,45 +68,52 @@ PYEOF
 
 # Check if PS1 uses \h so the container hostname ("sandbox") is visible
 update_ps1() {
-  if grep -qP 'PS1=.*(?!\\\\h)' "$BASHRC" 2>/dev/null && ! grep -q '\\\\h' "$BASHRC" 2>/dev/null; then
+  if grep -q 'PS1=' "$RCFILE" 2>/dev/null && ! grep -q '\\\\h' "$RCFILE" 2>/dev/null; then
     echo "Tip: Use \\h in your PS1 so the prompt shows 'sandbox' inside the container."
     echo "  Example: PS1='\\h:\\w\\\$ '"
   fi
 }
 
-# Install the sandbox function and aliases into .bashrc
+# Install the sandbox function and aliases into shell rc file
 install() {
   # Remove previous installation
-  if grep -q "$MARKER" "$BASHRC" 2>/dev/null; then
-    sed -i "\|$MARKER|,\|$MARKER_END|d" "$BASHRC"
-    echo "Removed previous claude-sandbox from .bashrc"
+  if grep -q "$MARKER" "$RCFILE" 2>/dev/null; then
+    _sed_inplace "\|$MARKER|,\|$MARKER_END|d" "$RCFILE"
+    echo "Removed previous claude-sandbox from $RCFILE"
   fi
 
   # Append new installation
   {
     echo ""
     echo "$MARKER"
+    echo "_SANDBOX_SCRIPT_DIR=\"$SCRIPT_DIR\""
     cat "$SOURCE_FILE"
     echo "$MARKER_END"
-  } >> "$BASHRC"
+  } >> "$RCFILE"
 
-  echo "Installed claude-sandbox into $BASHRC"
+  echo "Installed claude-sandbox into $RCFILE"
 }
 
-# Pull the base image (non-fatal — may already be cached)
-pull_image() {
-  local image="${SANDBOX_IMAGE:-ubuntu:22.04}"
-  echo "Pulling $image..."
-  docker pull "$image" 2>/dev/null || echo "Warning: could not pull $image — continuing with cached image"
+# Pull/build the base image (non-fatal)
+setup_image() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "Building claude-sandbox image (this may take a few minutes)..."
+    docker build -t claude-sandbox:latest -f "$SCRIPT_DIR/Dockerfile.macos" "$SCRIPT_DIR" \
+      || echo "Warning: could not build image — it will be built on first run"
+  else
+    local image="${SANDBOX_IMAGE:-ubuntu:22.04}"
+    echo "Pulling $image..."
+    docker pull "$image" 2>/dev/null || echo "Warning: could not pull $image — continuing with cached image"
+  fi
 }
 
 uninstall() {
-  if grep -q "$MARKER" "$BASHRC" 2>/dev/null; then
-    sed -i "\|$MARKER|,\|$MARKER_END|d" "$BASHRC"
-    echo "Removed claude-sandbox from $BASHRC"
-    echo "Run 'source ~/.bashrc' to apply."
+  if grep -q "$MARKER" "$RCFILE" 2>/dev/null; then
+    _sed_inplace "\|$MARKER|,\|$MARKER_END|d" "$RCFILE"
+    echo "Removed claude-sandbox from $RCFILE"
+    echo "Run 'source $RCFILE' to apply."
   else
-    echo "claude-sandbox is not installed in $BASHRC"
+    echo "claude-sandbox is not installed in $RCFILE"
   fi
 }
 
@@ -104,9 +128,9 @@ main() {
   setup_onboarding
   update_ps1
   install
-  pull_image
+  setup_image
   echo ""
-  echo "Done! Run 'source ~/.bashrc' then:"
+  echo "Done! Run 'source $RCFILE' then:"
   echo "  sandbox  — interactive shell in container"
   echo "  yolo     — claude with skip-permissions in container"
 }

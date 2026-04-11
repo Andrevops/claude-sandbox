@@ -1,6 +1,38 @@
 #!/usr/bin/env bash
 # Claude Sandbox — Run Claude Code in a lightweight Docker container
-# Source this file in your .bashrc or copy the contents directly
+# Source this file in your .bashrc/.zshrc or copy the contents directly
+
+# Platform detection
+_SANDBOX_OS="$(uname -s)"
+
+# Portable md5 hash (first 8 chars)
+_sandbox_hash() {
+  if [[ "$_SANDBOX_OS" == "Darwin" ]]; then
+    printf '%s' "$1" | md5 | cut -c1-8
+  else
+    printf '%s' "$1" | md5sum | cut -c1-8
+  fi
+}
+
+# Auto-build macOS image if missing
+_sandbox_ensure_image() {
+  [[ "$_SANDBOX_OS" != "Darwin" ]] && return 0
+  local image="${SANDBOX_IMAGE:-claude-sandbox:latest}"
+  if ! docker image inspect "$image" &>/dev/null; then
+    if [[ -z "${_SANDBOX_SCRIPT_DIR:-}" || ! -f "$_SANDBOX_SCRIPT_DIR/Dockerfile.macos" ]]; then
+      echo "Error: Cannot find Dockerfile.macos. Re-run install.sh or set _SANDBOX_SCRIPT_DIR."
+      return 1
+    fi
+    echo "The sandbox image '$image' is not built yet."
+    read -rp "Build it now? This may take a few minutes. [y/N] " answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+      docker build -t "$image" -f "$_SANDBOX_SCRIPT_DIR/Dockerfile.macos" "$_SANDBOX_SCRIPT_DIR"
+    else
+      echo "Aborted. Run 'make build' when ready."
+      return 1
+    fi
+  fi
+}
 
 # Prune exited/dead sandbox containers
 _sandbox_prune() {
@@ -11,11 +43,14 @@ _sandbox_prune() {
 _claude_docker() {
   local mode="${SANDBOX_HOSTNAME:-sandbox}"
   local dir_hash
-  dir_hash=$(printf '%s' "$PWD" | md5sum | cut -c1-8)
+  dir_hash=$(_sandbox_hash "$PWD")
   local name="claude-${mode}-${dir_hash}"
 
   # Prune dead sandbox containers on every launch
   _sandbox_prune
+
+  # Ensure macOS image exists
+  _sandbox_ensure_image || return 1
 
   # Stop existing container for this directory (if any)
   if docker ps -q --filter "name=^${name}$" | grep -q .; then
@@ -45,12 +80,35 @@ _claude_docker() {
     done < "$PWD/.sandbox.env"
   fi
 
-  # Build PATH: include host PATH plus any extra tool directories
-  local sandbox_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-  # Add AWS CLI dist directory if present
-  [[ -x "$HOME/aws/dist/aws" ]] && sandbox_path="$HOME/aws/dist:$sandbox_path"
+  # Platform-specific arguments
+  local platform_args=()
+  local image
+  local sandbox_path
 
-  local image="${SANDBOX_IMAGE:-ubuntu:22.04}"
+  if [[ "$_SANDBOX_OS" == "Darwin" ]]; then
+    # macOS: use pre-built image with tools installed inside
+    image="${SANDBOX_IMAGE:-claude-sandbox:latest}"
+    sandbox_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    platform_args+=(
+      -v /var/run/docker.sock:/var/run/docker.sock
+    )
+  else
+    # Linux: mount host binaries into minimal base image
+    image="${SANDBOX_IMAGE:-ubuntu:22.04}"
+    sandbox_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+    # Add AWS CLI dist directory if present
+    [[ -x "$HOME/aws/dist/aws" ]] && sandbox_path="$HOME/aws/dist:$sandbox_path"
+    platform_args+=(
+      --group-add "$(stat -c '%g' /var/run/docker.sock)"
+      -v /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro
+      -v /usr/lib:/usr/lib:ro
+      -v /usr/share:/usr/share:ro
+      -v /usr/bin:/usr/bin:ro
+      -v "$(readlink -f "$(which docker)"):/usr/local/bin/docker:ro"
+      -v /var/run/docker.sock:/var/run/docker.sock
+      -v /etc:/etc:ro
+    )
+  fi
 
   docker run -it --rm \
     --init \
@@ -58,23 +116,17 @@ _claude_docker() {
     --label "claude-sandbox" \
     --label "claude-sandbox.dir=$PWD" \
     --user "$(id -u):$(id -g)" \
-    --group-add "$(stat -c '%g' /var/run/docker.sock)" \
     --hostname "${SANDBOX_HOSTNAME:-sandbox}" \
     --network host \
     -e HOME="$HOME" \
     -e PATH="$sandbox_path" \
+    ${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"} \
     -e PROMPT_COMMAND='PS1="\[\033[1;36m\]\h\[\033[0m\]:\[\033[1;33m\]\w\[\033[0m\]\[\033[1;32m\]$(parse_git_branch 2>/dev/null)\[\033[0m\]\[\033[1;37m\]\$ \[\033[0m\]"' \
     -v "$HOME:$HOME" \
     -v "$HOME/.ssh:$HOME/.ssh:ro" \
     -v "$HOME/.aws:$HOME/.aws" \
     -v "$HOME/.gnupg:$HOME/.gnupg:ro" \
-    -v /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro \
-    -v /usr/lib:/usr/lib:ro \
-    -v /usr/share:/usr/share:ro \
-    -v /usr/bin:/usr/bin:ro \
-    -v "$(readlink -f "$(which docker)"):/usr/local/bin/docker:ro" \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v /etc:/etc:ro \
+    "${platform_args[@]}" \
     "${extra_mounts[@]}" \
     "${env_args[@]}" \
     -w "$PWD" \
@@ -114,7 +166,7 @@ sandbox() {
     attach)
       local mode="${SANDBOX_HOSTNAME:-sandbox}"
       local dir_hash
-      dir_hash=$(printf '%s' "$PWD" | md5sum | cut -c1-8)
+      dir_hash=$(_sandbox_hash "$PWD")
       local name="claude-${mode}-${dir_hash}"
       if docker ps -q --filter "name=^${name}$" | grep -q .; then
         docker exec -it --user "$(id -u):$(id -g)" "$name" bash
@@ -136,7 +188,8 @@ Commands:
   yolo                 Run Claude Code with --dangerously-skip-permissions
 
 Environment:
-  SANDBOX_IMAGE        Override base image (default: ubuntu:22.04)
+  SANDBOX_IMAGE        Override base image (default: ubuntu:22.04 on Linux,
+                       claude-sandbox:latest on macOS)
   SANDBOX_HOSTNAME     Override container hostname (default: sandbox)
   SANDBOX_MOUNTS       Extra bind mounts (newline-separated, -v syntax)
 

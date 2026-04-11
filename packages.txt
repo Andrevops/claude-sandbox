@@ -1,0 +1,20 @@
+# Packages to install in the sandbox container
+# One package per line. Lines starting with # are comments.
+# After editing, run: make build
+#
+# Core (required — do not remove)
+curl
+ca-certificates
+git
+openssh-client
+gnupg
+
+# Editors
+vim
+
+# Utilities
+jq
+wget
+unzip
+make
+less
