@@ -24,5 +24,13 @@ RUN DOCKER_VERSION="24.0.7" \
     && curl -fsSL "https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_VERSION}.tgz" \
     | tar xz --strip-components=1 -C /usr/local/bin docker/docker
 
+# Allow non-root users to register themselves in passwd/group at runtime
+RUN chmod 666 /etc/passwd /etc/group
+
+# Entrypoint: add current user to passwd/group if missing, then exec
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod 755 /usr/local/bin/entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
 # parse_git_branch for PS1 prompt
 RUN echo 'parse_git_branch() { git branch 2>/dev/null | sed -n "s/^* \(.*\)/ (\1)/p"; }' >> /etc/bash.bashrc

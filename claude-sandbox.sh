@@ -89,18 +89,8 @@ _claude_docker() {
     # macOS: use pre-built image with tools installed inside
     image="${SANDBOX_IMAGE:-claude-sandbox:latest}"
     sandbox_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-    # Generate passwd/group entries so git/ssh can resolve the user
-    local _uid _gid _user _home
-    _uid=$(id -u) _gid=$(id -g) _user=$(id -un) _home="$HOME"
-    local _passwd_file _group_file
-    _passwd_file=$(mktemp)
-    _group_file=$(mktemp)
-    echo "${_user}:x:${_uid}:${_gid}::${_home}:/bin/bash" > "$_passwd_file"
-    echo "sandbox:x:${_gid}:" > "$_group_file"
     platform_args+=(
       -v /var/run/docker.sock:/var/run/docker.sock
-      -v "${_passwd_file}:/etc/passwd:ro"
-      -v "${_group_file}:/etc/group:ro"
     )
   else
     # Linux: mount host binaries into minimal base image
