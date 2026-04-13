@@ -1,38 +1,17 @@
 #!/usr/bin/env bash
 # Claude Sandbox — Run Claude Code in a lightweight Docker container
-# Source this file in your .bashrc/.zshrc or copy the contents directly
+# Source this file in your .bashrc/.zshrc
 
-# Platform detection
-_SANDBOX_OS="$(uname -s)"
+# Resolve script directory (install.sh pre-sets this; fallback for manual sourcing)
+if [[ -z "${_SANDBOX_SCRIPT_DIR:-}" ]]; then
+  _SANDBOX_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+fi
 
-# Portable md5 hash (first 8 chars)
-_sandbox_hash() {
-  if [[ "$_SANDBOX_OS" == "Darwin" ]]; then
-    printf '%s' "$1" | md5 | cut -c1-8
-  else
-    printf '%s' "$1" | md5sum | cut -c1-8
-  fi
-}
-
-# Auto-build macOS image if missing
-_sandbox_ensure_image() {
-  [[ "$_SANDBOX_OS" != "Darwin" ]] && return 0
-  local image="${SANDBOX_IMAGE:-claude-sandbox:latest}"
-  if ! docker image inspect "$image" &>/dev/null; then
-    if [[ -z "${_SANDBOX_SCRIPT_DIR:-}" || ! -f "$_SANDBOX_SCRIPT_DIR/Dockerfile.macos" ]]; then
-      echo "Error: Cannot find Dockerfile.macos. Re-run install.sh or set _SANDBOX_SCRIPT_DIR."
-      return 1
-    fi
-    echo "The sandbox image '$image' is not built yet."
-    read -rp "Build it now? This may take a few minutes. [y/N] " answer
-    if [[ "$answer" =~ ^[Yy]$ ]]; then
-      docker build -t "$image" -f "$_SANDBOX_SCRIPT_DIR/Dockerfile.macos" "$_SANDBOX_SCRIPT_DIR"
-    else
-      echo "Aborted. Run 'make build' when ready."
-      return 1
-    fi
-  fi
-}
+# Load platform-specific implementation
+case "$(uname -s)" in
+  Darwin) source "$_SANDBOX_SCRIPT_DIR/lib/platform-darwin.sh" ;;
+  *)      source "$_SANDBOX_SCRIPT_DIR/lib/platform-linux.sh" ;;
+esac
 
 # Prune exited/dead sandbox containers
 _sandbox_prune() {
@@ -80,37 +59,11 @@ _claude_docker() {
     done < "$PWD/.sandbox.env"
   fi
 
-  # Platform-specific arguments
+  # Platform callback fills these in
   local platform_args=()
   local image
   local sandbox_path
-
-  if [[ "$_SANDBOX_OS" == "Darwin" ]]; then
-    # macOS: use pre-built image with tools installed inside
-    image="${SANDBOX_IMAGE:-claude-sandbox:latest}"
-    sandbox_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-    platform_args+=(
-      -v /var/run/docker.sock:/var/run/docker.sock
-    )
-  else
-    # Linux: mount host binaries into minimal base image
-    image="${SANDBOX_IMAGE:-ubuntu:22.04}"
-    sandbox_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-    # Add AWS CLI dist directory if present
-    [[ -x "$HOME/aws/dist/aws" ]] && sandbox_path="$HOME/aws/dist:$sandbox_path"
-    platform_args+=(
-      --group-add "$(stat -c '%g' /var/run/docker.sock)"
-      -v /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro
-      -v /usr/lib:/usr/lib:ro
-      -v /usr/share:/usr/share:ro
-      -v /usr/bin:/usr/bin:ro
-      -v "$(readlink -f "$(which docker)"):/usr/local/bin/docker:ro"
-      -v /var/run/docker.sock:/var/run/docker.sock
-      -v /etc:/etc:ro
-      -v "$HOME/.local/bin:$HOME/.local/bin:ro"
-      -v "$HOME/.local/share/claude:$HOME/.local/share/claude:ro"
-    )
-  fi
+  _sandbox_platform_setup
 
   docker run -it --rm \
     --init \

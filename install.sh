@@ -82,12 +82,12 @@ install() {
     echo "Removed previous claude-sandbox from $RCFILE"
   fi
 
-  # Append new installation
+  # Append new installation (sources from repo — changes take effect without reinstall)
   {
     echo ""
     echo "$MARKER"
     echo "_SANDBOX_SCRIPT_DIR=\"$SCRIPT_DIR\""
-    cat "$SOURCE_FILE"
+    echo "source \"\$_SANDBOX_SCRIPT_DIR/claude-sandbox.sh\""
     echo "$MARKER_END"
   } >> "$RCFILE"
 
