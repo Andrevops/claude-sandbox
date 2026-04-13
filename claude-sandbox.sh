@@ -130,6 +130,7 @@ _claude_docker() {
     -v "$HOME/.gnupg:$HOME/.gnupg:ro" \
     -v "$HOME/.gitconfig:$HOME/.gitconfig:ro" \
     -v "$HOME/.claude:$HOME/.claude" \
+    -v "$HOME/.claude.json:$HOME/.claude.json" \
     "${platform_args[@]}" \
     "${extra_mounts[@]}" \
     "${env_args[@]}" \
