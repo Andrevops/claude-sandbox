@@ -107,6 +107,8 @@ _claude_docker() {
       -v "$(readlink -f "$(which docker)"):/usr/local/bin/docker:ro"
       -v /var/run/docker.sock:/var/run/docker.sock
       -v /etc:/etc:ro
+      -v "$HOME/.local/bin:$HOME/.local/bin:ro"
+      -v "$HOME/.local/share/claude:$HOME/.local/share/claude:ro"
     )
   fi
 
