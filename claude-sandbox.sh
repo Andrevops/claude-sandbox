@@ -77,6 +77,7 @@ _claude_docker() {
     -e PATH="$sandbox_path" \
     ${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"} \
     -e PROMPT_COMMAND='PS1="\[\033[1;36m\]\h\[\033[0m\]:\[\033[1;33m\]\w\[\033[0m\]\[\033[1;32m\]$(parse_git_branch 2>/dev/null)\[\033[0m\]\[\033[1;37m\]\$ \[\033[0m\]"' \
+    --tmpfs "$HOME:uid=$(id -u),gid=$(id -g),mode=0755" \
     -v "$PWD:$PWD" \
     -v "$HOME/.ssh:$HOME/.ssh:ro" \
     -v "$HOME/.aws:$HOME/.aws" \
