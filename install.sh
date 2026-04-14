@@ -87,7 +87,7 @@ install() {
     echo ""
     echo "$MARKER"
     echo "_SANDBOX_SCRIPT_DIR=\"$SCRIPT_DIR\""
-    echo "source \"\$_SANDBOX_SCRIPT_DIR/claude-sandbox.sh\""
+    echo '[[ -f "$_SANDBOX_SCRIPT_DIR/claude-sandbox.sh" ]] && source "$_SANDBOX_SCRIPT_DIR/claude-sandbox.sh"'
     echo "$MARKER_END"
   } >> "$RCFILE"
 
