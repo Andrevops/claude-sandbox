@@ -27,6 +27,11 @@ _sandbox_platform_setup() {
     -v "$HOME/.local/bin:$HOME/.local/bin:ro"
     -v "$HOME/.local/share/claude:$HOME/.local/share/claude:ro"
   )
+  # Mount shell init files so the container gets env vars, aliases, and tool init
+  [[ -f "$HOME/.bashrc" ]]  && platform_args+=(-v "$HOME/.bashrc:$HOME/.bashrc:ro")
+  [[ -f "$HOME/.profile" ]] && platform_args+=(-v "$HOME/.profile:$HOME/.profile:ro")
   # Mount nvm if present (node installed via nvm won't be in /usr/bin)
-  [[ -d "$HOME/.nvm" ]] && platform_args+=(-v "$HOME/.nvm:$HOME/.nvm:ro")
+  [[ -d "$HOME/.nvm" ]]   && platform_args+=(-v "$HOME/.nvm:$HOME/.nvm:ro")
+  # Mount cargo/rust if present (.bashrc and .profile source ~/.cargo/env)
+  [[ -d "$HOME/.cargo" ]] && platform_args+=(-v "$HOME/.cargo:$HOME/.cargo:ro")
 }
