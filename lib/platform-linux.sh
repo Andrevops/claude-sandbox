@@ -13,15 +13,13 @@ _sandbox_ensure_image() {
 _sandbox_platform_setup() {
   image="${SANDBOX_IMAGE:-ubuntu:22.04}"
   sandbox_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-  # Add AWS CLI dist directory if present
-  [[ -x "$HOME/aws/dist/aws" ]] && sandbox_path="$HOME/aws/dist:$sandbox_path"
   platform_args+=(
     --group-add "$(stat -c '%g' /var/run/docker.sock)"
     -v /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro
     -v /usr/lib:/usr/lib:ro
     -v /usr/share:/usr/share:ro
     -v /usr/bin:/usr/bin:ro
-    -v "$(readlink -f "$(which docker)"):/usr/local/bin/docker:ro"
+    -v /usr/local:/usr/local:ro
     -v /var/run/docker.sock:/var/run/docker.sock
     -v /etc:/etc:ro
     -v "$HOME/.local/bin:$HOME/.local/bin:ro"
