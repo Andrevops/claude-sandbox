@@ -19,7 +19,8 @@ _sandbox_platform_setup() {
     -v /usr/lib:/usr/lib:ro
     -v /usr/share:/usr/share:ro
     -v /usr/bin:/usr/bin:ro
-    -v /usr/local:/usr/local:ro
+    -v /usr/local:/usr/local
+    -v "$(readlink -f "$(which docker)"):/usr/local/bin/docker:ro"
     -v /var/run/docker.sock:/var/run/docker.sock
     -v /etc:/etc:ro
     -v "$HOME/.local/bin:$HOME/.local/bin:ro"
