@@ -95,57 +95,88 @@ The main value of `yolo` is running `--dangerously-skip-permissions` inside a di
 
 ### Linux / WSL2
 
-Host binaries and libraries are mounted directly into the container — zero build time, instant startup.
+Host binaries and libraries are mounted directly into the container — zero build time, instant startup. The container's `$HOME` is backed by a **tmpfs overlay** so writes outside the explicit mount list never leak back to your host home.
 
 ```
 Host (WSL2 / Linux)
  |
- ├── $HOME                 ──► mounted (full home directory incl. ~/.claude)
- ├── /usr/bin              ──► mounted read-only (host binaries)
- ├── /usr/lib              ──► mounted read-only (shared libraries)
- ├── /usr/share            ──► mounted read-only (ca-certificates, TLS certs)
- ├── /lib/x86_64-linux-gnu ──► mounted read-only (shared libraries)
- ├── docker binary         ──► mounted read-only (resolved via readlink)
- ├── /var/run/docker.sock  ──► mounted (Docker-in-Docker access)
- └── /etc                  ──► mounted read-only (uid resolution + config)
+ ├── $HOME                      ──► tmpfs overlay (isolates writes from host $HOME)
+ │    ├── .ssh                  ──► read-only (SSH keys)
+ │    ├── .aws                  ──► read-write (SSO token refresh works inside)
+ │    ├── .gnupg                ──► read-only (GPG keys for commit signing)
+ │    ├── .gitconfig            ──► read-only (git identity + aliases)
+ │    ├── .claude               ──► read-write (Claude session, memory, plugins)
+ │    ├── .claude.json          ──► read-write (onboarding/theme state)
+ │    ├── .local/bin            ──► read-only (user-installed CLIs like glab)
+ │    ├── .local/share/claude   ──► read-only (Claude install tree)
+ │    ├── .config/glab-cli      ──► read-only (if present)
+ │    ├── .bashrc               ──► read-only (if present — env, aliases, tool init)
+ │    ├── .profile              ──► read-only (if present)
+ │    ├── .nvm                  ──► read-only (if present — host-installed Node)
+ │    └── .cargo                ──► read-only (if present — Rust toolchain)
+ ├── $PWD                       ──► read-write (your project directory)
+ ├── /tmp                       ──► read-write (shared — files persist to host)
+ ├── /usr/bin                   ──► read-only (host binaries)
+ ├── /usr/lib                   ──► read-only (shared libraries)
+ ├── /usr/local                 ──► read-write (extra tooling like AWS CLI)
+ ├── /usr/share                 ──► read-only (ca-certificates, TLS roots)
+ ├── /lib/x86_64-linux-gnu      ──► read-only (shared libraries)
+ ├── /etc                       ──► read-only (uid resolution + TLS config)
+ ├── docker binary              ──► read-only (resolved via readlink for WSL)
+ └── /var/run/docker.sock       ──► read-write (Docker-in-Docker)
          │
          ▼
-   ┌─────────────────────────────┐
-   │  ubuntu:22.04 container     │
-   │  (~70MB base image)         │
-   │                             │
-   │  - Host binaries at /usr/bin │
-   │  - Same uid/gid as host     │
-   │  - Host network mode        │
-   │  - Working dir = host $PWD  │
-   └─────────────────────────────┘
+   ┌────────────────────────────────────────────┐
+   │  ubuntu:22.04 container (~70MB)            │
+   │                                            │
+   │  • Same uid/gid as host (--user)           │
+   │  • --group-add <docker.sock gid>           │
+   │  • Host network mode (--network host)      │
+   │  • Working dir = host $PWD                 │
+   │  • --init (tini) + --rm (auto-cleanup)     │
+   │  • Container name: claude-<mode>-<md5pwd>  │
+   └────────────────────────────────────────────┘
 ```
+
+**Conditional mounts** (`.config/glab-cli`, `.bashrc`, `.profile`, `.nvm`, `.cargo`) are added only if the path exists on the host, so the sandbox degrades gracefully on machines that don't have them.
+
+**Per-directory containers:** each working directory gets its own container named `claude-<mode>-<md5(PWD)>` (mode defaults to `sandbox`, `yolo` for `yolo`). Relaunching from the same directory force-removes the previous container so you always get a fresh environment.
 
 ### macOS
 
-macOS binaries (Mach-O) can't run in Linux containers (ELF), so a Docker image is built with tools pre-installed. Your home directory (including `~/.claude` config and session) is still mounted from the host.
+macOS binaries (Mach-O) can't run in Linux containers (ELF), so a Docker image is built with tools pre-installed. The home-overlay pattern is the same as Linux — `$HOME` is a tmpfs with specific subdirs bind-mounted from the host.
 
 ```
 Host (macOS)
  |
- ├── $HOME                 ──► mounted (full home directory incl. ~/.claude)
- ├── ~/.ssh                ──► mounted read-only
- ├── ~/.aws                ──► mounted read-write (SSO token refresh)
- ├── ~/.gnupg              ──► mounted read-only
- └── /var/run/docker.sock  ──► mounted (Docker access)
+ ├── $HOME                  ──► tmpfs overlay (isolates writes from host $HOME)
+ │    ├── .ssh              ──► read-only
+ │    ├── .aws              ──► read-write (SSO token refresh)
+ │    ├── .gnupg            ──► read-only
+ │    ├── .gitconfig        ──► read-only
+ │    ├── .claude           ──► read-write (session, memory, plugins)
+ │    └── .claude.json      ──► read-write (onboarding/theme state)
+ ├── $PWD                   ──► read-write (project directory)
+ ├── /tmp                   ──► read-write (shared with host)
+ └── /var/run/docker.sock   ──► read-write (Docker access)
          │
          ▼
-   ┌──────────────────────────────────┐
-   │  claude-sandbox:latest container │
-   │  (built from Dockerfile.macos)  │
-   │                                  │
-   │  - Claude binary (pre-installed) │
-   │  - Docker CLI (pre-installed)    │
-   │  - Packages from packages.txt   │
-   │  - Same uid/gid as host         │
-   │  - Host network mode            │
-   │  - Working dir = host $PWD      │
-   └──────────────────────────────────┘
+   ┌────────────────────────────────────────┐
+   │  claude-sandbox:latest                 │
+   │  (built from Dockerfile.macos)         │
+   │                                        │
+   │  • Claude binary (via claude.ai/install.sh) │
+   │  • Node.js LTS + npm                   │
+   │  • Docker CLI (static binary, 24.0.7)  │
+   │  • Packages from packages.txt          │
+   │  • entrypoint.sh adds current uid/gid  │
+   │    to /etc/passwd on container start   │
+   │    (/etc/passwd is chmod 666 in image) │
+   │  • parse_git_branch helper in          │
+   │    /etc/bash.bashrc for the prompt     │
+   │  • Same uid/gid as host, host network  │
+   │  • Working dir = host $PWD             │
+   └────────────────────────────────────────┘
 ```
 
 ### Customizing the macOS image
@@ -172,6 +203,21 @@ Then rebuild:
 ```bash
 make build
 ```
+
+## What persists across sessions
+
+The container is `--rm` and `$HOME` is a tmpfs, so everything written inside vanishes on exit **except** paths that are bind-mounted from the host. If you need a file to outlive the session, write it to one of these:
+
+| Location | Persistence | Typical use |
+|----------|-------------|-------------|
+| `$PWD` | ✅ host `$PWD` | Code, commits, project-local artifacts |
+| `/tmp` | ✅ host `/tmp` | Scratch files you want to read from the host shell |
+| `$HOME/.claude` | ✅ host `~/.claude` | Claude session, memory, plugins (auto-managed) |
+| `$HOME/.aws` | ✅ host `~/.aws` | SSO tokens (writable for `aws sso login`) |
+| `$HOME/<anything-else>` | ❌ tmpfs | Ephemeral — lost on exit |
+| `/` (elsewhere) | ❌ container fs | Ephemeral — lost on exit |
+
+For anything not on this list, assume it's ephemeral.
 
 ## Configuration
 
@@ -254,7 +300,7 @@ This sandbox prioritizes **convenience over isolation**. It limits blast radius 
 
 - **Network isolation** — host network mode means the container has the same network access as your host. A malicious process can reach any endpoint you can, including internal services, cloud metadata APIs (`169.254.169.254`), and exfiltration targets. The [official devcontainer](https://code.claude.com/docs/en/devcontainer) solves this with a default-deny firewall that whitelists only npm, GitHub, and the Claude API.
 
-- **Filesystem isolation** — `$HOME` is mounted read-write. The container can read/modify your git config, shell history, Claude credentials (`~/.claude`), and any file in your home directory. The official devcontainer isolates the workspace to `/workspace` with no host home mount.
+- **Filesystem isolation** — although `$HOME` itself is a tmpfs, the explicit overlays (`.claude`, `.aws`, `.gitconfig`, `.ssh` read-only, etc.) give the container direct access to your Claude credentials, AWS SSO tokens, and git config. `$PWD` and `/tmp` are shared read-write, so anything in those paths is visible on the host. The official devcontainer isolates the workspace to `/workspace` with no host home mount.
 
 - **Docker socket = root** — the mounted Docker socket gives the container full control over the Docker daemon, which is effectively root-equivalent on the host. It can spawn privileged containers, mount the host filesystem, or manipulate other running containers. Remove the `-v /var/run/docker.sock` line if you don't need Docker access.
 
@@ -310,7 +356,9 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ## Troubleshooting
 
 ### "No user exists for uid 1000"
-SSH needs to resolve your user. On Linux/WSL2, the setup mounts `/etc/passwd` and `/etc/group` read-only to fix this.
+SSH and some tools need to resolve the running user via `/etc/passwd`. The fix differs per platform:
+- **Linux / WSL2** — the container mounts the host's entire `/etc` read-only, so host `/etc/passwd` and `/etc/group` are directly available.
+- **macOS** — `Dockerfile.macos` makes `/etc/passwd` and `/etc/group` world-writable (`chmod 666`), and `entrypoint.sh` appends the running uid/gid at container start. No host `/etc` mount is used.
 
 ### Claude asks for first-time setup
 The installer handles this automatically. If it still happens, add `hasCompletedOnboarding: true` and `theme: "dark"` to `~/.claude/.claude.json`.
