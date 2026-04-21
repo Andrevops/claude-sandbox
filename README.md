@@ -109,7 +109,8 @@ Host (WSL2 / Linux)
  │    ├── .claude.json          ──► read-write (onboarding/theme state)
  │    ├── .local/bin            ──► read-only (user-installed CLIs like glab)
  │    ├── .local/share/claude   ──► read-only (Claude install tree)
- │    ├── .config/glab-cli      ──► read-only (if present)
+ │    ├── .config/glab-cli      ──► read-write (OAuth token refresh — if present)
+ │    ├── .config/acli          ──► read-write (jira/acli auth state — if present)
  │    ├── .bashrc               ──► read-only (if present — env, aliases, tool init)
  │    ├── .profile              ──► read-only (if present)
  │    ├── .nvm                  ──► read-only (if present — host-installed Node)
@@ -138,7 +139,7 @@ Host (WSL2 / Linux)
    └────────────────────────────────────────────┘
 ```
 
-**Conditional mounts** (`.config/glab-cli`, `.bashrc`, `.profile`, `.nvm`, `.cargo`) are added only if the path exists on the host, so the sandbox degrades gracefully on machines that don't have them.
+**Conditional mounts** (`.config/glab-cli`, `.config/acli`, `.bashrc`, `.profile`, `.nvm`, `.cargo`) are added only if the path exists on the host, so the sandbox degrades gracefully on machines that don't have them.
 
 **Per-directory containers:** each working directory gets its own container named `claude-<mode>-<md5(PWD)>` (mode defaults to `sandbox`, `yolo` for `yolo`). Relaunching from the same directory force-removes the previous container so you always get a fresh environment.
 
@@ -214,6 +215,8 @@ The container is `--rm` and `$HOME` is a tmpfs, so everything written inside van
 | `/tmp` | ✅ host `/tmp` | Scratch files you want to read from the host shell |
 | `$HOME/.claude` | ✅ host `~/.claude` | Claude session, memory, plugins (auto-managed) |
 | `$HOME/.aws` | ✅ host `~/.aws` | SSO tokens (writable for `aws sso login`) |
+| `$HOME/.config/glab-cli` | ✅ host (if present) | `glab` OAuth token refresh |
+| `$HOME/.config/acli` | ✅ host (if present) | Atlassian `acli` auth state |
 | `$HOME/<anything-else>` | ❌ tmpfs | Ephemeral — lost on exit |
 | `/` (elsewhere) | ❌ container fs | Ephemeral — lost on exit |
 

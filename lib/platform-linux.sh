@@ -26,8 +26,9 @@ _sandbox_platform_setup() {
     -v "$HOME/.local/bin:$HOME/.local/bin:ro"
     -v "$HOME/.local/share/claude:$HOME/.local/share/claude:ro"
   )
-  # Mount tool configs (glab, etc.)
-  [[ -d "$HOME/.config/glab-cli" ]] && platform_args+=(-v "$HOME/.config/glab-cli:$HOME/.config/glab-cli:ro")
+  # Mount tool configs read-write so OAuth token refresh / auth state persists to host
+  [[ -d "$HOME/.config/glab-cli" ]] && platform_args+=(-v "$HOME/.config/glab-cli:$HOME/.config/glab-cli")
+  [[ -d "$HOME/.config/acli" ]]     && platform_args+=(-v "$HOME/.config/acli:$HOME/.config/acli")
   # Mount shell init files so the container gets env vars, aliases, and tool init
   [[ -f "$HOME/.bashrc" ]]  && platform_args+=(-v "$HOME/.bashrc:$HOME/.bashrc:ro")
   [[ -f "$HOME/.profile" ]] && platform_args+=(-v "$HOME/.profile:$HOME/.profile:ro")
