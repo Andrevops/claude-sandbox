@@ -18,3 +18,4 @@ wget
 unzip
 make
 less
+gh
