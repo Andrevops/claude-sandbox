@@ -44,9 +44,14 @@ _claude_docker() {
   #     /opt/tools:/opt/tools:ro
   #   "
   local extra_mounts=()
+  local pwd_remapped=0
   while IFS= read -r m; do
     m="${m#"${m%%[![:space:]]*}"}"  # trim leading whitespace
-    [[ -n "$m" ]] && extra_mounts+=(-v "$m")
+    [[ -z "$m" ]] && continue
+    extra_mounts+=(-v "$m")
+    # If this mount's destination is $PWD, skip the default -v $PWD:$PWD below
+    local spec="${m%:ro}"; spec="${spec%:rw}"
+    [[ "${spec##*:}" == "$PWD" ]] && pwd_remapped=1
   done <<< "${SANDBOX_MOUNTS:-}"
 
   # Load project-specific env vars from .sandbox.env
@@ -82,6 +87,9 @@ _claude_docker() {
     )
   fi
 
+  local pwd_mount=()
+  [[ "$pwd_remapped" == "0" ]] && pwd_mount=(-v "$PWD:$PWD")
+
   docker run -it --rm \
     --init \
     --name "$name" \
@@ -94,7 +102,7 @@ _claude_docker() {
     -e PATH="$sandbox_path" \
     ${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"} \
     -e PROMPT_COMMAND='PS1="\[\033[1;36m\]\h\[\033[0m\]:\[\033[1;33m\]\w\[\033[0m\]\[\033[1;32m\]$(parse_git_branch 2>/dev/null)\[\033[0m\]\[\033[1;37m\]\$ \[\033[0m\]"' \
-    -v "$PWD:$PWD" \
+    "${pwd_mount[@]}" \
     "${host_home_args[@]}" \
     "${platform_args[@]}" \
     "${extra_mounts[@]}" \

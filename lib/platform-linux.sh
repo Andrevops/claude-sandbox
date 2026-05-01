@@ -24,8 +24,9 @@ _sandbox_platform_setup() {
     -v /var/run/docker.sock:/var/run/docker.sock
     -v /etc:/etc:ro
     -v "$HOME/.local/bin:$HOME/.local/bin:ro"
-    # Mount ~/.local/share rw so tools (claude, chop, etc.) can read+persist state
+    # Mount ~/.local/share and ~/.local/state rw so tools can read+persist state
     -v "$HOME/.local/share:$HOME/.local/share"
+    -v "$HOME/.local/state:$HOME/.local/state"
   )
   # Mount tool configs read-write so OAuth token refresh / auth state persists to host
   [[ -d "$HOME/.config/glab-cli" ]] && platform_args+=(-v "$HOME/.config/glab-cli:$HOME/.config/glab-cli")
