@@ -35,4 +35,5 @@ _sandbox_platform_setup() {
   [[ -d "$HOME/.nvm" ]]   && platform_args+=(-v "$HOME/.nvm:$HOME/.nvm:ro")
   # Mount cargo/rust if present (.bashrc and .profile source ~/.cargo/env)
   [[ -d "$HOME/.cargo" ]] && platform_args+=(-v "$HOME/.cargo:$HOME/.cargo:ro")
+  return 0
 }
